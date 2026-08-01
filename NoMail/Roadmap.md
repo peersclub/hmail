@@ -2,6 +2,8 @@
 
 Phased plan from demo prototype to working client. Each phase is independently shippable.
 
+> **2026-08-01:** The product north star — NoMail as the ONE app connected to everything on the phone — now lives in [[One App Vision]] (14 life domains + deep-link catalog, iOS surface plan, AI agent layer, competitive strategy, Phases A/B/C). The contextual-actions core it builds on is documented in [[Actions API]].
+
 ## Phase 1 — Make it honest and bootable ✅ (2026-08-01)
 
 - [x] Clone repo to `/Users/Victor/Projects22/hmail`, audit code vs README

@@ -37,3 +37,19 @@ Victor created the Google Cloud OAuth iOS client (project consent name "NoMail")
 - `plutil -lint` OK; analyze 0 errors; tests 6/6.
 
 **Blocked on machine setup, not code:** first `flutter build ios --simulator` failed — Xcode license unaccepted, first-launch components missing, CocoaPods absent (brew install also blocked by the license). Victor to run `sudo xcodebuild -license accept` + `sudo xcodebuild -runFirstLaunch`, then install cocoapods and rebuild. No Android SDK on this Mac — iOS is the only mobile path locally.
+
+## 2026-08-01 — Design system v3: liquid glass
+
+Victor rejected both the Material editorial look and the plain Cupertino grouped-list look ("Settings-app utility skin"). New bar: Uber/Airbnb-level polish with Apple's liquid-glass material.
+
+**Diagnosis of what was wrong:** four saturated hues fighting (red/orange/green/purple traffic lights), stock list rows with no depth, no hierarchy on the brief, truncated text everywhere.
+
+**New contract (`lib/ui/glass/glass.dart` + `lib/core/palette.dart`):**
+- Every surface is a real glass card: backdrop blur (σ26) + gradient white fill + hairline border + soft ambient shadow, over a gradient wash with two faint accent glows
+- ONE accent (iOS blue). Red/orange exist only as urgency *text*. Icon badges are neutral circles. Data-viz uses a monochrome accent ramp (`Palette.ramp`)
+- Floating glass dock replaces the tab bar (`GlassDock`, `kDockClearance` for content)
+- Primitives: GlassBackground/Card/Header/Section/Row, IconBadge, SectionLabel, Footnote, GlassEmptyState, AccentButton, QuietButton
+
+**Process:** foundation single-authored, then four parallel agents rebuilt Today / Money / Packages / Sign-in+Settings against the contract. Concurrent session added Event extraction (todayEvents, meetings in brief) — Today screen binds to it.
+
+Also this session: AI gateway switched Anthropic-direct → **OpenRouter** (`OPENROUTER_API_KEY` + `OPENROUTER_MODEL`, default `anthropic/claude-haiku-4.5`); real-Gmail extraction fixes (bill amount near due-language, date-only overdue, stale-bill aging, cache key bump).
