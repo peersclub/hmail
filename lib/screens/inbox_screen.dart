@@ -41,7 +41,7 @@ class _InboxScreenState extends State<InboxScreen> with SingleTickerProviderStat
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('HMail'),
+        title: const Text('NoMail'),
         elevation: 0,
         bottom: PreferredSize(
           preferredSize: Size.fromHeight(_showFilters ? 120 : 60),

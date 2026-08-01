@@ -1,6 +1,6 @@
 {
-    "name": "hmail",
-    "short_name": "hmail",
+    "name": "NoMail",
+    "short_name": "NoMail",
     "start_url": ".",
     "display": "standalone",
     "background_color": "#0175C2",

@@ -1,14 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:provider/provider.dart';
-import '../providers/email_provider.dart';
+import '../providers/enhanced_email_provider.dart';
 
 class InsightsChart extends StatelessWidget {
   const InsightsChart({super.key});
 
   @override
   Widget build(BuildContext context) {
-    return Consumer<EmailProvider>(
+    return Consumer<EnhancedEmailProvider>(
       builder: (context, provider, _) {
         final data = [
           PieChartSectionData(

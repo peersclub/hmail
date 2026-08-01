@@ -10,6 +10,7 @@ class EnhancedEmailProvider extends ChangeNotifier {
 
   bool _isLoading = false;
   bool _isSignedIn = false;
+  bool _isDemoMode = false;
   String? _userEmail;
   String? _userName;
   String? _userPhoto;
@@ -27,6 +28,7 @@ class EnhancedEmailProvider extends ChangeNotifier {
 
   bool get isLoading => _isLoading;
   bool get isSignedIn => _isSignedIn;
+  bool get isDemoMode => _isDemoMode;
   String? get userEmail => _userEmail;
   String? get userName => _userName;
   String? get userPhoto => _userPhoto;
@@ -44,29 +46,40 @@ class EnhancedEmailProvider extends ChangeNotifier {
     _isLoading = true;
     notifyListeners();
 
-    // Demo mode - bypass actual Google Sign-In for testing
-    await Future.delayed(const Duration(seconds: 1));
-    
-    _isSignedIn = true;
-    _userEmail = "demo@hmail.app";
-    _userName = "Demo User";
-    _userPhoto = null;
-    
-    // Load demo data
-    await _loadDemoData();
+    final signedIn = await _gmailService.signIn();
+
+    if (signedIn) {
+      final account = _gmailService.currentUser!;
+      _isSignedIn = true;
+      _isDemoMode = false;
+      _userEmail = account.email;
+      _userName = account.displayName ?? account.email;
+      _userPhoto = account.photoUrl;
+
+      await fetchEmails();
+      await fetchLabels();
+    } else {
+      // OAuth unconfigured or cancelled — run in explicit demo mode.
+      _isSignedIn = true;
+      _isDemoMode = true;
+      _userEmail = "demo@nomail.app";
+      _userName = "Demo User";
+      _userPhoto = null;
+      await _loadDemoData();
+    }
 
     _isLoading = false;
     notifyListeners();
     return true;
   }
-  
+
   Future<void> _loadDemoData() async {
     // Create demo emails
     _emails = [
       Email(
         id: '1',
         from: 'amazon@amazon.com',
-        to: 'demo@hmail.app',
+        to: 'demo@nomail.app',
         subject: 'Your order has been delivered',
         body: 'Your package containing iPhone 15 Pro has been delivered to your address.',
         snippet: 'Your package containing iPhone 15 Pro has been delivered...',
@@ -85,7 +98,7 @@ class EnhancedEmailProvider extends ChangeNotifier {
       Email(
         id: '2',
         from: 'netflix@netflix.com',
-        to: 'demo@hmail.app',
+        to: 'demo@nomail.app',
         subject: 'Your Netflix subscription renewal',
         body: 'Your Netflix subscription will renew on January 1, 2025 for \$15.99/month.',
         snippet: 'Your Netflix subscription will renew on January 1...',
@@ -104,7 +117,7 @@ class EnhancedEmailProvider extends ChangeNotifier {
       Email(
         id: '3',
         from: 'utility@electriccompany.com',
-        to: 'demo@hmail.app',
+        to: 'demo@nomail.app',
         subject: 'Electricity Bill - Due December 15',
         body: 'Your electricity bill of \$125.50 is due on December 15, 2024.',
         snippet: 'Your electricity bill of \$125.50 is due...',
@@ -203,9 +216,13 @@ class EnhancedEmailProvider extends ChangeNotifier {
     _labels = ['Important', 'Work', 'Personal', 'Finance', 'Shopping'];
   }
 
+  /// Legacy-widget entry point: refresh inbox and re-run AI analysis.
+  Future<void> fetchAndAnalyzeEmails() => fetchEmails();
+
   Future<void> signOut() async {
     await _gmailService.signOut();
     _isSignedIn = false;
+    _isDemoMode = false;
     _userEmail = null;
     _userName = null;
     _userPhoto = null;
@@ -217,6 +234,8 @@ class EnhancedEmailProvider extends ChangeNotifier {
   }
 
   Future<void> fetchEmails({EmailFilter? filter, int maxResults = 50}) async {
+    if (_isDemoMode) return; // demo data is static
+
     _isLoading = true;
     notifyListeners();
 
@@ -367,7 +386,7 @@ class EnhancedEmailProvider extends ChangeNotifier {
   }
 
   Future<void> markAsRead(String messageId) async {
-    await _gmailService.markAsRead(messageId);
+    if (!_isDemoMode) await _gmailService.markAsRead(messageId);
     final index = _emails.indexWhere((e) => e.id == messageId);
     if (index != -1) {
       _emails[index] = _emails[index].copyWith(isRead: true);
@@ -376,7 +395,7 @@ class EnhancedEmailProvider extends ChangeNotifier {
   }
 
   Future<void> markAsUnread(String messageId) async {
-    await _gmailService.markAsUnread(messageId);
+    if (!_isDemoMode) await _gmailService.markAsUnread(messageId);
     final index = _emails.indexWhere((e) => e.id == messageId);
     if (index != -1) {
       _emails[index] = _emails[index].copyWith(isRead: false);
@@ -385,7 +404,7 @@ class EnhancedEmailProvider extends ChangeNotifier {
   }
 
   Future<void> toggleStar(String messageId, bool starred) async {
-    await _gmailService.toggleStar(messageId, starred);
+    if (!_isDemoMode) await _gmailService.toggleStar(messageId, starred);
     final index = _emails.indexWhere((e) => e.id == messageId);
     if (index != -1) {
       _emails[index] = _emails[index].copyWith(isStarred: starred);
@@ -394,14 +413,14 @@ class EnhancedEmailProvider extends ChangeNotifier {
   }
 
   Future<void> archiveEmail(String messageId) async {
-    await _gmailService.archiveEmail(messageId);
+    if (!_isDemoMode) await _gmailService.archiveEmail(messageId);
     _emails.removeWhere((e) => e.id == messageId);
     _filteredEmails.removeWhere((e) => e.id == messageId);
     notifyListeners();
   }
 
   Future<void> deleteEmail(String messageId) async {
-    await _gmailService.moveToTrash(messageId);
+    if (!_isDemoMode) await _gmailService.moveToTrash(messageId);
     _emails.removeWhere((e) => e.id == messageId);
     _filteredEmails.removeWhere((e) => e.id == messageId);
     notifyListeners();
@@ -432,6 +451,7 @@ class EnhancedEmailProvider extends ChangeNotifier {
   }
 
   Future<void> fetchLabels() async {
+    if (_isDemoMode) return;
     try {
       _labels = await _gmailService.fetchLabels();
       notifyListeners();

@@ -1,8 +1,7 @@
 import 'dart:convert';
-import 'dart:typed_data';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:googleapis/gmail/v1.dart';
 import 'package:google_sign_in/google_sign_in.dart';
-import 'package:googleapis_auth/auth_io.dart';
 import 'package:http/http.dart' as http;
 import '../models/email.dart';
 
@@ -15,28 +14,59 @@ class EnhancedGmailService {
 
   GoogleSignInAccount? _currentUser;
   GmailApi? _gmailApi;
+  bool _initialized = false;
 
+  GoogleSignInAccount? get currentUser => _currentUser;
+  bool get isConfigured => (dotenv.maybeGet('GOOGLE_CLIENT_ID') ?? '').isNotEmpty;
+
+  Future<void> _ensureInitialized() async {
+    if (_initialized) return;
+    await GoogleSignIn.instance.initialize(
+      clientId: dotenv.maybeGet('GOOGLE_CLIENT_ID'),
+    );
+    _initialized = true;
+  }
+
+  /// Signs in with Google and authorizes Gmail scopes.
+  ///
+  /// Returns false when OAuth is not configured (no GOOGLE_CLIENT_ID) or the
+  /// user cancels — callers fall back to demo mode.
   Future<bool> signIn() async {
-    try {
-      // For now, return false as Google Sign-In needs proper configuration
-      // This will be implemented when Google OAuth is properly set up
-      return false;
-      if (_currentUser == null) return false;
+    if (!isConfigured) return false;
 
-      final auth = await _currentUser!.authentication;
-      final accessToken = auth.idToken ?? '';
-      final client = GoogleAuthClient(accessToken);
-      _gmailApi = GmailApi(client);
-      
+    try {
+      await _ensureInitialized();
+      final signIn = GoogleSignIn.instance;
+
+      // Silent re-auth for returning users; interactive prompt otherwise.
+      GoogleSignInAccount? account =
+          await signIn.attemptLightweightAuthentication();
+      account ??= await signIn.authenticate(scopeHint: _scopes);
+      _currentUser = account;
+
+      final authorization =
+          await account.authorizationClient.authorizationForScopes(_scopes) ??
+              await account.authorizationClient.authorizeScopes(_scopes);
+
+      _gmailApi = GmailApi(GoogleAuthClient(authorization.accessToken));
       return true;
+    } on GoogleSignInException catch (e) {
+      print('Google Sign-In failed: ${e.code} ${e.description}');
+      _currentUser = null;
+      _gmailApi = null;
+      return false;
     } catch (e) {
       print('Error signing in: $e');
+      _currentUser = null;
+      _gmailApi = null;
       return false;
     }
   }
 
   Future<void> signOut() async {
-    // await GoogleSignIn.instance.signOut();
+    try {
+      await GoogleSignIn.instance.signOut();
+    } catch (_) {}
     _currentUser = null;
     _gmailApi = null;
   }

@@ -7,7 +7,12 @@ import 'screens/login_screen.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await dotenv.load(fileName: ".env");
+  try {
+    await dotenv.load(fileName: ".env");
+  } catch (_) {
+    // No .env bundled — app runs in demo mode (no Gmail OAuth, no AI keys).
+    dotenv.testLoad(fileInput: '');
+  }
   runApp(const MyApp());
 }
 
@@ -19,7 +24,7 @@ class MyApp extends StatelessWidget {
     return ChangeNotifierProvider(
       create: (_) => EnhancedEmailProvider(),
       child: MaterialApp(
-        title: 'HMail - Smart Email Client',
+        title: 'NoMail - Smart Email Client',
         theme: ThemeData(
           colorScheme: ColorScheme.fromSeed(
             seedColor: Colors.blue,

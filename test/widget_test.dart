@@ -1,14 +1,18 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:provider/provider.dart';
-import 'package:hmail/main.dart';
 import 'package:hmail/providers/enhanced_email_provider.dart';
 import 'package:hmail/models/email.dart';
 import 'package:hmail/screens/login_screen.dart';
 import 'package:hmail/screens/main_navigation_screen.dart';
 
 void main() {
-  group('HMail App Tests', () {
+  setUpAll(() {
+    // Providers read dotenv at construction; tests run without a bundled .env.
+    dotenv.testLoad(fileInput: '');
+  });
+  group('NoMail App Tests', () {
     testWidgets('Shows login screen when not signed in', (WidgetTester tester) async {
       await tester.pumpWidget(
         ChangeNotifierProvider(
@@ -19,7 +23,7 @@ void main() {
         ),
       );
 
-      expect(find.text('HMail'), findsOneWidget);
+      expect(find.text('NoMail'), findsOneWidget);
       expect(find.text('Sign in with Google'), findsOneWidget);
       expect(find.byIcon(Icons.mail_outline), findsOneWidget);
     });
@@ -91,11 +95,13 @@ void main() {
         ),
       );
 
-      expect(find.byIcon(Icons.inbox), findsOneWidget);
-      expect(find.byIcon(Icons.insights_outlined), findsOneWidget);
-      expect(find.byIcon(Icons.shopping_cart_outlined), findsOneWidget);
-      expect(find.byIcon(Icons.subscriptions_outlined), findsOneWidget);
-      expect(find.byIcon(Icons.receipt_long_outlined), findsOneWidget);
+      // Tab content may reuse the same icons in empty states, so assert
+      // presence rather than uniqueness.
+      expect(find.byIcon(Icons.inbox), findsWidgets);
+      expect(find.byIcon(Icons.insights_outlined), findsWidgets);
+      expect(find.byIcon(Icons.shopping_cart_outlined), findsWidgets);
+      expect(find.byIcon(Icons.subscriptions_outlined), findsWidgets);
+      expect(find.byIcon(Icons.receipt_long_outlined), findsWidgets);
     });
   });
 

@@ -9,9 +9,12 @@ class AIService {
   late String? _openAiApiKey;
 
   AIService() {
-    _claudeApiKey = dotenv.env['CLAUDE_API_KEY'];
-    _openAiApiKey = dotenv.env['OPENAI_API_KEY'];
+    _claudeApiKey = _nonEmpty(dotenv.env['CLAUDE_API_KEY']);
+    _openAiApiKey = _nonEmpty(dotenv.env['OPENAI_API_KEY']);
   }
+
+  static String? _nonEmpty(String? value) =>
+      (value == null || value.trim().isEmpty) ? null : value.trim();
 
   Future<List<EmailInsight>> analyzeEmails(List<String> emailContents) async {
     if (_claudeApiKey == null && _openAiApiKey == null) {
@@ -82,7 +85,7 @@ class AIService {
         },
       ),
       data: {
-        'model': 'claude-3-haiku-20240307',
+        'model': 'claude-haiku-4-5',
         'max_tokens': 4000,
         'messages': [
           {

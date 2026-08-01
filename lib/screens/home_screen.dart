@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import '../providers/email_provider.dart';
+import '../providers/enhanced_email_provider.dart';
 import '../widgets/dashboard_card.dart';
 import '../widgets/amazon_orders_list.dart';
 import '../widgets/subscriptions_list.dart';
@@ -21,7 +21,7 @@ class _HomeScreenState extends State<HomeScreen> {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      context.read<EmailProvider>().fetchAndAnalyzeEmails();
+      context.read<EnhancedEmailProvider>().fetchAndAnalyzeEmails();
     });
   }
 
@@ -29,10 +29,10 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('HMail Insights'),
+        title: const Text('NoMail Insights'),
         elevation: 0,
         actions: [
-          Consumer<EmailProvider>(
+          Consumer<EnhancedEmailProvider>(
             builder: (context, provider, _) {
               if (provider.userPhoto != null) {
                 return Padding(
@@ -53,7 +53,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   title: const Text('Refresh'),
                   onTap: () {
                     Navigator.pop(context);
-                    context.read<EmailProvider>().fetchAndAnalyzeEmails();
+                    context.read<EnhancedEmailProvider>().fetchAndAnalyzeEmails();
                   },
                 ),
               ),
@@ -63,7 +63,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   title: const Text('Sign Out'),
                   onTap: () {
                     Navigator.pop(context);
-                    context.read<EmailProvider>().signOut();
+                    context.read<EnhancedEmailProvider>().signOut();
                   },
                 ),
               ),
@@ -71,7 +71,7 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
         ],
       ),
-      body: Consumer<EmailProvider>(
+      body: Consumer<EnhancedEmailProvider>(
         builder: (context, provider, _) {
           if (provider.isLoading) {
             return const Center(
@@ -126,7 +126,7 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  Widget _buildDashboard(EmailProvider provider) {
+  Widget _buildDashboard(EnhancedEmailProvider provider) {
     return RefreshIndicator(
       onRefresh: () => provider.fetchAndAnalyzeEmails(),
       child: SingleChildScrollView(

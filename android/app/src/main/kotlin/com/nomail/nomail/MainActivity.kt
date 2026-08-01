@@ -1,4 +1,4 @@
-package com.hmail.hmail
+package com.nomail.nomail
 
 import io.flutter.embedding.android.FlutterActivity
 

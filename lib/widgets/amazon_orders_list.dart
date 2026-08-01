@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import '../providers/email_provider.dart';
+import '../providers/enhanced_email_provider.dart';
 import 'package:intl/intl.dart';
 
 class AmazonOrdersList extends StatelessWidget {
@@ -8,7 +8,7 @@ class AmazonOrdersList extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Consumer<EmailProvider>(
+    return Consumer<EnhancedEmailProvider>(
       builder: (context, provider, _) {
         if (provider.amazonOrders.isEmpty) {
           return Center(

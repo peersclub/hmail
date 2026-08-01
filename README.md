@@ -1,6 +1,6 @@
-# HMail - Smart Email Client
+# NoMail - Smart Email Client
 
-A revolutionary Flutter-based email client that transforms Gmail into an intelligent personal assistant. HMail uses AI to analyze your emails and provide actionable insights, making email management effortless and insightful.
+A revolutionary Flutter-based email client that transforms Gmail into an intelligent personal assistant. NoMail uses AI to analyze your emails and provide actionable insights, making email management effortless and insightful.
 
 ## 🌟 Features
 
@@ -115,7 +115,7 @@ flutter test --coverage
 
 ## 🏗️ Architecture
 
-HMail follows a clean architecture pattern with:
+NoMail follows a clean architecture pattern with:
 - **Provider** for state management
 - **Repository pattern** for data access
 - **Service layer** for business logic
@@ -142,7 +142,7 @@ lib/
 
 ## 🎨 Customization
 
-HMail supports:
+NoMail supports:
 - Light and dark themes
 - Custom color schemes
 - Adjustable text sizes
@@ -179,7 +179,7 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## 📞 Support
 
-For support, email support@hmail.app or open an issue on GitHub.
+For support, email support@nomail.app or open an issue on GitHub.
 
 ## 🚦 Roadmap
 
@@ -194,13 +194,13 @@ For support, email support@hmail.app or open an issue on GitHub.
 - [ ] Voice commands
 - [ ] Email analytics dashboard
 
-## 💡 Why HMail?
+## 💡 Why NoMail?
 
-Traditional email clients show you emails. HMail understands them. It's not just an inbox; it's your personal email intelligence system that:
+Traditional email clients show you emails. NoMail understands them. It's not just an inbox; it's your personal email intelligence system that:
 - Saves time with AI-powered insights
 - Prevents missed payments and deliveries
 - Tracks spending automatically
 - Prioritizes what matters most
 - Makes email management effortless
 
-Transform your Gmail experience today with HMail!
+Transform your Gmail experience today with NoMail!
