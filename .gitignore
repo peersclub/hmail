@@ -48,3 +48,7 @@ app.*.map.json
 .env
 .env.local
 .env.*.local
+
+# Obsidian: keep vault config, ignore per-machine UI state
+NoMail/.obsidian/workspace*.json
+NoMail/.obsidian/cache
