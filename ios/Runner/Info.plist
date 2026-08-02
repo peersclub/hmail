@@ -39,6 +39,8 @@
 	<string>129153074260-ek9chll55ieif8e39gv6qupb7d2tmpiv.apps.googleusercontent.com</string>
 	<key>LSApplicationQueriesSchemes</key>
 	<array>
+		<string>googlecalendar</string>
+		<string>googlegmail</string>
 		<string>gpay</string>
 		<string>phonepe</string>
 		<string>paytmmp</string>

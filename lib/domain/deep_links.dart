@@ -104,10 +104,13 @@ const _neverWebView = {
   ActionKind.pay,
   ActionKind.remind,
   ActionKind.calendar,
-  ActionKind.manage,
   ActionKind.join,
   ActionKind.openEmail,
 };
+// `manage` is deliberately absent: the big billing pages (Netflix, Spotify,
+// Apple…) are already covered by _authGatedHosts, and blocking the whole
+// kind meant an unknown service's manage page went to Safari too — losing
+// both the in-app experience and the feedback we could have collected.
 
 bool _isAuthGated(String host) {
   final lower = host.toLowerCase();

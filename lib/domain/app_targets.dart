@@ -442,6 +442,25 @@ class AppCatalog {
       category: AppCategory.meeting,
     ),
     AppTarget(
+      key: 'gmail',
+      name: 'Gmail',
+      // By far the most-used action in the app is "Open email". Without a
+      // probe we could neither detect the Gmail app nor say where the tap
+      // was going, which made every such tap look like a trip to Safari.
+      // We still launch the mail.google.com universal link; the scheme is
+      // only how we know the app is there.
+      probeScheme: 'googlegmail',
+      universalHosts: ['mail.google.com'],
+      category: AppCategory.other,
+    ),
+    AppTarget(
+      key: 'google_calendar',
+      name: 'Google Calendar',
+      probeScheme: 'googlecalendar',
+      universalHosts: ['calendar.google.com'],
+      category: AppCategory.other,
+    ),
+    AppTarget(
       key: 'google_meet',
       name: 'Google Meet',
       // Universal-link only by design — no scheme, so no Info.plist budget
