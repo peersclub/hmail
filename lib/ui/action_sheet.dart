@@ -11,6 +11,7 @@ import 'package:flutter/cupertino.dart';
 
 import '../core/action_launcher.dart';
 import '../core/brand_icons.dart';
+import '../core/host_routing.dart';
 import '../core/installed_apps.dart';
 import '../core/palette.dart';
 import '../domain/actions.dart';
@@ -40,10 +41,12 @@ Future<void> showInsightActions(
       : await installedApps
           .detect()
           .timeout(const Duration(milliseconds: 250), onTimeout: () => const {});
+  final externalHosts = await hostRouting.load();
   if (!context.mounted) return;
 
   final plans = {
-    for (final action in actions) action: planFor(action, installed),
+    for (final action in actions)
+      action: planFor(action, installed, externalHosts: externalHosts),
   };
 
   if (actions.length == 1) {

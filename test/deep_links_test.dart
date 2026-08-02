@@ -4,9 +4,11 @@ library;
 
 import 'package:flutter/cupertino.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:hmail/core/host_routing.dart';
 import 'package:hmail/domain/actions.dart';
 import 'package:hmail/domain/deep_links.dart';
 import 'package:hmail/ui/action_sheet.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 InsightAction action(String url, ActionKind kind, {String label = 'Go'}) =>
     InsightAction(label: label, uri: Uri.parse(url), kind: kind);
@@ -198,6 +200,55 @@ void main() {
         icons.add(hint.icon);
       }
       expect(icons, hasLength(3), reason: 'the three outcomes must look different');
+    });
+  });
+
+  group('user-taught external hosts (the Ubuy lesson)', () {
+    // Ubuy has an app but isn't in the probe registry (iOS caps the scheme
+    // list at 50) — a WebView would bypass it. Once the user teaches the
+    // router, the link must be handed to iOS so the universal link can fire.
+    test('a remembered host is handed to iOS, not the WebView', () {
+      final plan = planFor(
+        action('https://www.ubuy.co.in/order/12345', ActionKind.track),
+        const {}, // app unknown to the registry — detection can't help
+        externalHosts: const {'ubuy.co.in'},
+      );
+      expect(plan.mode, LinkOpenMode.systemHandoff);
+      expect(plan.destination, 'ubuy.co.in');
+    });
+
+    test('www and subdomains match the remembered host', () {
+      expect(HostRouting.matches('www.ubuy.co.in', const {'ubuy.co.in'}),
+          isTrue);
+      expect(HostRouting.matches('orders.ubuy.co.in', const {'ubuy.co.in'}),
+          isTrue);
+      expect(HostRouting.matches('notubuy.co.in', const {'ubuy.co.in'}),
+          isFalse, reason: 'suffix match must respect the dot boundary');
+    });
+
+    test('an untaught host still defaults to the WebView', () {
+      final plan = planFor(
+        action('https://www.ubuy.co.in/order/12345', ActionKind.track),
+        const {},
+      );
+      expect(plan.mode, LinkOpenMode.inAppWebView);
+    });
+  });
+
+  group('HostRouting store', () {
+    setUp(() => SharedPreferences.setMockInitialValues({}));
+
+    test('remembers, matches after reload, and undoes', () async {
+      final routing = HostRouting();
+      await routing.preferExternal('www.Ubuy.co.in');
+
+      final reloaded = await HostRouting().load();
+      expect(HostRouting.matches('www.ubuy.co.in', reloaded), isTrue,
+          reason: 'the taught route must survive a restart');
+
+      await routing.undo('ubuy.co.in');
+      expect(HostRouting.matches('www.ubuy.co.in', await HostRouting().load()),
+          isFalse);
     });
   });
 }

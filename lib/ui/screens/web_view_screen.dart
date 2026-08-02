@@ -16,6 +16,7 @@ import 'package:flutter/cupertino.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 
+import '../../core/host_routing.dart';
 import '../../core/palette.dart';
 import '../../domain/link_feedback.dart';
 import '../glass/glass.dart';
@@ -251,6 +252,32 @@ class _WebViewScreenState extends State<WebViewScreen> {
     }
   }
 
+  /// The remembered host awaiting a possible Undo after "open outside".
+  String? _externalHost;
+
+  /// Hands the current page to iOS — the only launch mode where universal
+  /// links fire, so a site whose app is installed but unknown to the probe
+  /// registry (iOS caps it at 50 schemes) opens in its app. The choice is
+  /// remembered per host; the bottom bar offers Undo.
+  Future<void> _openOutside() async {
+    final uri = Uri.tryParse(_pendingUrl) ?? widget.url;
+    final host = HostRouting.normalize(uri.host);
+    await hostRouting.preferExternal(host);
+    if (mounted) setState(() => _externalHost = host);
+    try {
+      await launchUrl(uri, mode: LaunchMode.externalApplication);
+    } catch (_) {
+      // Safari at worst; the preference is still recorded and undoable.
+    }
+  }
+
+  Future<void> _undoExternal() async {
+    final host = _externalHost;
+    if (host == null) return;
+    await hostRouting.undo(host);
+    if (mounted) setState(() => _externalHost = null);
+  }
+
   @override
   Widget build(BuildContext context) {
     return GlassBackground(
@@ -260,17 +287,35 @@ class _WebViewScreenState extends State<WebViewScreen> {
           backgroundColor: const Color(0x00000000),
           border: null,
           middle: _title(context),
-          trailing: CupertinoButton(
-            padding: EdgeInsets.zero,
-            onPressed: () => Navigator.of(context).maybePop(),
-            child: Text(
-              'Done',
-              style: TextStyle(
-                fontSize: 17,
-                fontWeight: FontWeight.w600,
-                color: Palette.label(context),
+          trailing: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // The escape hatch for "I have this site's app": an external
+              // launch is the only way iOS universal links can fire, and the
+              // choice is remembered per host so the miss never repeats.
+              CupertinoButton(
+                padding: EdgeInsets.zero,
+                minimumSize: const Size(34, 34),
+                onPressed: _openOutside,
+                child: Icon(
+                  CupertinoIcons.arrow_up_right_square,
+                  size: 21,
+                  color: Palette.label(context),
+                ),
               ),
-            ),
+              CupertinoButton(
+                padding: EdgeInsets.zero,
+                onPressed: () => Navigator.of(context).maybePop(),
+                child: Text(
+                  'Done',
+                  style: TextStyle(
+                    fontSize: 17,
+                    fontWeight: FontWeight.w600,
+                    color: Palette.label(context),
+                  ),
+                ),
+              ),
+            ],
           ),
         ),
         child: Column(
@@ -387,12 +432,15 @@ class _WebViewScreenState extends State<WebViewScreen> {
     );
   }
 
-  /// Blocked-scheme notice and the feedback question share the bottom slot —
-  /// two stacked prompts would be one too many.
+  /// One prompt at a time in the bottom slot. The routing confirmation wins —
+  /// it responds to a tap the user just made — then the blocked-scheme notice,
+  /// then the feedback question.
   Widget _bottomBar(BuildContext context) {
-    final Widget? content = _blockedScheme != null
-        ? _blockedNotice(context)
-        : (_askVisible ? _feedbackBar(context) : null);
+    final Widget? content = _externalHost != null
+        ? _externalNotice(context)
+        : _blockedScheme != null
+            ? _blockedNotice(context)
+            : (_askVisible ? _feedbackBar(context) : null);
     if (content == null) return const SizedBox.shrink();
     return Padding(
       padding: EdgeInsets.fromLTRB(
@@ -402,6 +450,43 @@ class _WebViewScreenState extends State<WebViewScreen> {
         MediaQuery.paddingOf(context).bottom + 12,
       ),
       child: content,
+    );
+  }
+
+  /// In-flow confirmation of the routing change, with the way back. Per the
+  /// house rule, it sits inside the layout — never over the page's controls.
+  Widget _externalNotice(BuildContext context) {
+    return GlassCard(
+      radius: 20,
+      padding: const EdgeInsets.fromLTRB(16, 12, 6, 12),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(
+              '$_externalHost links now open outside NoMail — in its app '
+              'when you have it.',
+              style: TextStyle(
+                fontSize: 14,
+                height: 1.3,
+                letterSpacing: -0.2,
+                color: Palette.label(context),
+              ),
+            ),
+          ),
+          CupertinoButton(
+            padding: const EdgeInsets.symmetric(horizontal: 10),
+            onPressed: _undoExternal,
+            child: Text(
+              'Undo',
+              style: TextStyle(
+                fontSize: 15,
+                fontWeight: FontWeight.w600,
+                color: Palette.accent(context),
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 

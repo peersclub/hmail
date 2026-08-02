@@ -18,6 +18,7 @@
 /// them nothing and lets us ask whether the link was right.
 library;
 
+import '../core/host_routing.dart';
 import '../core/installed_apps.dart';
 import 'actions.dart';
 import 'app_targets.dart';
@@ -122,7 +123,16 @@ bool _isAuthGated(String host) {
 ///
 /// [installed] is [InstalledApps.detect]'s result; pass an empty set when
 /// detection hasn't run yet — the plan degrades to web, never to nothing.
-LinkPlan planFor(InsightAction action, Set<String> installed) {
+///
+/// [externalHosts] is the user-taught routing memory ([HostRouting]): hosts
+/// whose links must be handed to iOS so universal links can reach an app the
+/// probe registry doesn't know about (registry detection is capped at 50
+/// schemes by iOS — memory is the layer that scales past it).
+LinkPlan planFor(
+  InsightAction action,
+  Set<String> installed, {
+  Set<String> externalHosts = const {},
+}) {
   final uri = action.uri;
 
   // Non-http schemes (upi:, tel:, mailto:) can only be resolved by iOS.
@@ -147,6 +157,17 @@ LinkPlan planFor(InsightAction action, Set<String> installed) {
       mode: LinkOpenMode.nativeApp,
       destination: target.name,
       appKey: target.key,
+    );
+  }
+
+  // The user taught us this site opens outside NoMail (usually because they
+  // have its app and universal links only fire on an external launch).
+  if (HostRouting.matches(uri.host, externalHosts)) {
+    return LinkPlan(
+      uri: uri,
+      mode: LinkOpenMode.systemHandoff,
+      destination: target?.name ?? HostRouting.normalize(uri.host),
+      appKey: target?.key,
     );
   }
 
