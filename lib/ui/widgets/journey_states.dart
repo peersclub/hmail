@@ -9,6 +9,7 @@ import 'package:provider/provider.dart';
 import '../../core/palette.dart';
 import '../../state/app_controller.dart';
 import '../glass/glass.dart';
+import '../screens/processing_screen.dart';
 
 /// Inline progress line: spinner plus what is happening right now.
 /// Centered, one line, 15pt secondary — quiet enough to sit near buttons.
@@ -36,6 +37,28 @@ class BusyLine extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+/// Header badge while a sync runs: the spinner is where people look when they
+/// wonder whether the app has hung, so it answers — tap it for the live
+/// pipeline. Sized to match the 36pt account bubble it replaces.
+class SyncBusyBadge extends StatelessWidget {
+  const SyncBusyBadge({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: () => Navigator.of(context, rootNavigator: true).push(
+        CupertinoPageRoute<void>(builder: (_) => const ProcessingScreen()),
+      ),
+      child: const SizedBox(
+        width: 36,
+        height: 36,
+        child: Center(child: CupertinoActivityIndicator()),
+      ),
     );
   }
 }

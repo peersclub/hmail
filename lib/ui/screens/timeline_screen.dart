@@ -11,6 +11,7 @@ import '../../domain/insight_mapper.dart';
 import '../../state/app_controller.dart';
 import '../glass/glass.dart';
 import '../insight_card.dart';
+import '../widgets/journey_states.dart';
 
 /// Timeline — one filterable feed of every insight domain. Replaces the old
 /// Packages and Reads tabs. The chip row shows a count per domain, is
@@ -108,6 +109,9 @@ class _TimelineScreenState extends State<TimelineScreen> {
                   eyebrow: all.isEmpty
                       ? 'Everything from your inbox'
                       : '${all.length} insights',
+                  trailing: app.phase == AppPhase.syncing
+                      ? const SyncBusyBadge()
+                      : null,
                 ),
                 if (domains.isNotEmpty)
                   _FilterChips(
@@ -123,6 +127,22 @@ class _TimelineScreenState extends State<TimelineScreen> {
                   ),
                 // Breathing room so the first card never crowds the chips.
                 const SizedBox(height: 6),
+                // The user's chosen filter emptied out (e.g. after a rescan):
+                // say so instead of silently snapping back to All — a silent
+                // reset reads as "my tap didn't register". The choice is kept,
+                // so if the domain refills on a later sync it re-applies.
+                if (_filter != null && !domains.contains(_filter))
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(34, 2, 34, 8),
+                    child: Text(
+                      '${_filter!.label} is empty now — showing everything.',
+                      style: TextStyle(
+                        fontSize: 13,
+                        height: 1.35,
+                        color: Palette.secondaryLabel(context),
+                      ),
+                    ),
+                  ),
                 if (all.isEmpty)
                   GlassEmptyState(
                     icon: CupertinoIcons.tray,

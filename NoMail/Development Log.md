@@ -20,7 +20,9 @@ Victor's verdict on the first backup UX ("I click back up… somewhere in the bo
 
 **Tab screens (parallel agent).** Sign-in: in-place progress + inline error + honest "Explore with Sample Data". Today: scanning state with live `activityLine`, error row with Try again, empty state with a real Scan button (not just pull-to-refresh prose). Timeline: per-domain empty lines. Money: syncing narration + scan CTA. New shared `lib/ui/widgets/journey_states.dart` (BusyLine, ScanActionButton).
 
-**Remaining audit items (logged, not yet done):** Money/Timeline header busy badge (#3), AI key entry or honest copy for shipped builds (#4), Timeline filter-vanish note (#8), GlassEmptyState action slot (#9).
+**Audit follow-ups done same day:** #3 — shared `SyncBusyBadge` (tap → live pipeline) now on Today/Money/Timeline headers; #8 — a vanished chip filter now says "<Domain> is empty now — showing everything" instead of silently resetting (choice kept, re-applies if the domain refills). **Still open:** #4 AI-key entry vs honest copy for shipped builds (needs a product call); #9 GlassEmptyState action slot (covered in practice by ScanActionButton).
+
+**Apple Developer Program:** Victor enrolled (Individual, US account) — activation pending. When active: switch project team, add iCloud capability + `iCloud.com.nomail.nomail`, rebuild → iCloud backup goes live, and the 7-day free-team app expiry disappears.
 
 297 tests pass (backup journey + Drive message mapping + controller state tests added); analyze clean; installed to iPhone.
 

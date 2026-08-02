@@ -44,7 +44,14 @@ class MoneyScreen extends StatelessWidget {
       padding: EdgeInsets.zero,
       children: [
         SizedBox(height: MediaQuery.paddingOf(context).top + 6),
-        const GlassHeader(eyebrow: 'Recurring & bills', title: 'Money'),
+        GlassHeader(
+          eyebrow: 'Recurring & bills',
+          title: 'Money',
+          // Same live-scan signal as Today — a tab must never look idle
+          // while the pipeline is running.
+          trailing:
+              app.phase == AppPhase.syncing ? const SyncBusyBadge() : null,
+        ),
         if (isEmpty) ...[
           const GlassEmptyState(
             icon: CupertinoIcons.creditcard,

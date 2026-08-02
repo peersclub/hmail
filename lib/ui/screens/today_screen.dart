@@ -53,7 +53,7 @@ class TodayScreen extends StatelessWidget {
                 eyebrow: DateFormat('EEEE, d MMMM').format(DateTime.now()),
                 title: 'Today',
                 trailing: app.phase == AppPhase.syncing
-                    ? _busyBadge(context)
+                    ? const SyncBusyBadge()
                     : _accountBubble(context, app),
               ),
             ],
@@ -262,22 +262,6 @@ class TodayScreen extends StatelessWidget {
             ],
           ),
         ),
-      ),
-    );
-  }
-
-  /// The spinner is where people look when they wonder whether the app has
-  /// hung, so it answers: tap it for the live pipeline.
-  Widget _busyBadge(BuildContext context) {
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTap: () => Navigator.of(context, rootNavigator: true).push(
-        CupertinoPageRoute<void>(builder: (_) => const ProcessingScreen()),
-      ),
-      child: const SizedBox(
-        width: 36,
-        height: 36,
-        child: Center(child: CupertinoActivityIndicator()),
       ),
     );
   }
