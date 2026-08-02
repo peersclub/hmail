@@ -768,6 +768,67 @@ PaymentAlert? extractPayment(EmailMeta email) {
   );
 }
 
+const _returnSignals = [
+  'return window', 'eligible for return', 'return by', 'return before',
+  'days left to return', 'easy returns', 'return or replace', 'return period',
+  'window to return', 'returnable until',
+];
+const _warrantySignals = [
+  'warranty expires', 'warranty valid', 'warranty ends', 'warranty period',
+  'extend your warranty', 'warranty until',
+];
+
+ReturnItem? extractReturn(EmailMeta email) {
+  final hay = email.haystack;
+
+  final ReturnKind kind;
+  List<String> signals;
+  if (_returnSignals.any(hay.contains)) {
+    kind = ReturnKind.returnWindow;
+    signals = _returnSignals;
+  } else if (_warrantySignals.any(hay.contains)) {
+    kind = ReturnKind.warranty;
+    signals = _warrantySignals;
+  } else {
+    return null;
+  }
+
+  // Require a parseable deadline near the return/warranty language — the bare
+  // phrase alone (common in email footers) isn't actionable.
+  DateTime? deadline;
+  for (final key in signals) {
+    final idx = hay.indexOf(key);
+    if (idx < 0) continue;
+    final window = hay.substring(idx, (idx + 90).clamp(0, hay.length));
+    deadline = extractDate(window, anchor: email.date);
+    if (deadline != null) break;
+  }
+  if (deadline == null) return null;
+
+  String merchant = _titleCaseDomain(email.senderDomain);
+  for (final entry in _merchants.entries) {
+    if (email.senderDomain.contains(entry.key)) {
+      merchant = entry.value;
+      break;
+    }
+  }
+
+  return ReturnItem(
+    kind: kind,
+    merchant: merchant,
+    item: email.subject.isEmpty ? null : email.subject,
+    deadline: deadline,
+    lastSeen: email.date,
+    sourceEmailId: email.id,
+    url: extractActionUrl(
+      email,
+      keywords: kind == ReturnKind.returnWindow
+          ? ['return', 'start a return', 'return or replace', 'view order']
+          : ['warranty', 'register', 'claim', 'view'],
+    ),
+  );
+}
+
 /// Runs every extractor over [emails]; returns extracted insights plus the
 /// emails nothing claimed (candidates for the AI attention pass).
 ({
@@ -777,6 +838,7 @@ PaymentAlert? extractPayment(EmailMeta email) {
   List<EventItem> events,
   List<TravelItem> travel,
   List<PaymentAlert> payments,
+  List<ReturnItem> returns,
   List<FeedItem> feed,
   List<EmailMeta> unclaimed,
 }) runExtractors(List<EmailMeta> emails) {
@@ -786,6 +848,7 @@ PaymentAlert? extractPayment(EmailMeta email) {
   final events = <EventItem>[];
   final travel = <TravelItem>[];
   final payments = <PaymentAlert>[];
+  final returns = <ReturnItem>[];
   final feed = <FeedItem>[];
   final unclaimed = <EmailMeta>[];
 
@@ -802,6 +865,13 @@ PaymentAlert? extractPayment(EmailMeta email) {
     final payment = extractPayment(email);
     if (payment != null) {
       payments.add(payment);
+      continue;
+    }
+    // Returns before deliveries: a "delivered, return by X" email is an
+    // actionable return window, not an inactive delivery.
+    final ret = extractReturn(email);
+    if (ret != null) {
+      returns.add(ret);
       continue;
     }
     final delivery = extractDelivery(email);
@@ -840,6 +910,7 @@ PaymentAlert? extractPayment(EmailMeta email) {
     events: events,
     travel: travel,
     payments: payments,
+    returns: returns,
     feed: feed,
     unclaimed: unclaimed,
   );

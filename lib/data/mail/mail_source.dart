@@ -111,6 +111,28 @@ class DemoMailSource implements MailSource {
         body: 'Your order was delivered on ${day(now.subtract(const Duration(days: 3)))}.',
         date: now.subtract(const Duration(days: 3)),
       ),
+      EmailMeta(
+        id: 'demo-return',
+        from: 'Myntra <orders@myntra.com>',
+        subject: 'Your order was delivered',
+        snippet: 'Delivered — returns are open.',
+        body:
+            'Your order was delivered. Not a perfect fit? Eligible for return by '
+            '${day(now.add(const Duration(days: 7)))}. '
+            'Start a return: https://www.myntra.com/my/returns',
+        date: now.subtract(const Duration(days: 1)),
+      ),
+      EmailMeta(
+        id: 'demo-warranty',
+        from: 'boAt <care@boat-lifestyle.com>',
+        subject: 'Your product warranty',
+        snippet: 'Warranty details inside.',
+        body:
+            'Thanks for registering your Airdopes. Warranty valid until '
+            '${day(now.add(const Duration(days: 40)))}. '
+            'View warranty: https://www.boat-lifestyle.com/warranty',
+        date: now.subtract(const Duration(days: 20)),
+      ),
       // Always ~2h in the future so the demo Today screen has a joinable
       // meeting no matter when it's opened.
       EmailMeta(

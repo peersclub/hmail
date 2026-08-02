@@ -153,6 +153,16 @@ void main() {
       );
     });
 
+    test('runReported carries travel, payments and returns through', () async {
+      // Guards a regression where the reported build dropped these lists while
+      // the plain run() path kept them — the demo fixtures have all three.
+      final result = await engine(const NoAi()).runReported();
+      final snap = result.snapshot;
+      expect(snap.travel, isNotEmpty, reason: 'demo IndiGo flight');
+      expect(snap.payments, isNotEmpty, reason: 'demo failed payment + refund');
+      expect(snap.returns, isNotEmpty, reason: 'demo Myntra return + warranty');
+    });
+
     test('stages are emitted in pipeline order', () async {
       final seen = <SyncStage>[];
       await engine(const NoAi()).runReported(onStage: seen.add);

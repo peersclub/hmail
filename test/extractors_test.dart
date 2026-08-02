@@ -446,4 +446,54 @@ void paymentTests() {
       expect(r.payments.first.kind, PaymentKind.failed);
     });
   });
+
+  group('extractReturn', () {
+    test('an open return window with a deadline is a return item', () {
+      final r = extractReturn(email(
+        from: 'Myntra <orders@myntra.com>',
+        subject: 'Your order was delivered',
+        body: 'Delivered. Eligible for return by 15 Aug 2026. Start a return.',
+      ));
+      expect(r, isNotNull);
+      expect(r!.kind, ReturnKind.returnWindow);
+      expect(r.merchant, 'Myntra');
+      expect(r.deadline, DateTime(2026, 8, 15));
+    });
+
+    test('a warranty with an expiry date is a warranty item', () {
+      final r = extractReturn(email(
+        from: 'boAt <care@boat-lifestyle.com>',
+        subject: 'Your product warranty',
+        body: 'Warranty valid until 20 Dec 2026.',
+      ));
+      expect(r, isNotNull);
+      expect(r!.kind, ReturnKind.warranty);
+      expect(r.deadline, DateTime(2026, 12, 20));
+    });
+
+    test('return language with no parseable date is ignored (footer noise)', () {
+      expect(
+        extractReturn(email(
+          from: 'shop@example.com',
+          subject: 'Thanks for your order',
+          body: 'Easy returns on all items. See our return policy for details.',
+        )),
+        isNull,
+        reason: 'a bare "returns" phrase with no deadline is not actionable',
+      );
+    });
+
+    test('runExtractors routes a "delivered, return by X" to returns, '
+        'not deliveries', () {
+      final r = runExtractors([
+        email(
+          from: 'Myntra <orders@myntra.com>',
+          subject: 'Your order was delivered',
+          body: 'Delivered. Eligible for return by 15 Aug 2026.',
+        ),
+      ]);
+      expect(r.returns, isNotEmpty, reason: 'returns win over the delivery rule');
+      expect(r.deliveries, isEmpty);
+    });
+  });
 }

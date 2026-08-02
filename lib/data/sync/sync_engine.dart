@@ -64,6 +64,9 @@ class SyncEngine {
       bills: [...extracted.bills, ...learned.bills],
       deliveries: [...extracted.deliveries, ...learned.deliveries],
       events: [...extracted.events, ...learned.events],
+      travel: extracted.travel,
+      payments: extracted.payments,
+      returns: extracted.returns,
       feed: extracted.feed,
       lastSyncedAt: DateTime.now(),
       emailsScanned: emails.length,
@@ -164,6 +167,7 @@ class SyncEngine {
       events: extracted.events,
       travel: extracted.travel,
       payments: extracted.payments,
+      returns: extracted.returns,
       feed: extracted.feed,
       lastSyncedAt: DateTime.now(),
       emailsScanned: emails.length,
@@ -242,6 +246,10 @@ InsightSnapshot applyVerdicts(
     payments: [
       for (final p in snapshot.payments)
         if (kept(p.sourceEmailId)) p,
+    ],
+    returns: [
+      for (final r in snapshot.returns)
+        if (kept(r.sourceEmailId)) r,
     ],
   );
 }

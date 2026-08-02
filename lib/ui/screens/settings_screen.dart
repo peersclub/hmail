@@ -34,11 +34,7 @@ class SettingsScreen extends StatelessWidget {
       children: [
         SizedBox(height: MediaQuery.paddingOf(context).top + 6),
         const GlassHeader(eyebrow: 'Account & privacy', title: 'Settings'),
-        GlassSection(
-          children: [
-            _profileRow(context, app),
-          ],
-        ),
+        _accountsSection(context, app),
         GlassSection(
           label: 'Data',
           children: [
@@ -240,10 +236,56 @@ class SettingsScreen extends StatelessWidget {
     if (confirmed == true) await controller.rescan();
   }
 
-  /// Profile row: GlassRow layout, but the leading badge is an initial
-  /// avatar rather than an icon, so it is built by hand.
-  Widget _profileRow(BuildContext context, AppController app) {
-    final name = app.accountName ?? 'Not signed in';
+  /// Accounts section: one row per connected Gmail account (initial-circle
+  /// avatar + email, each removable), plus an "Add account" row. In demo mode
+  /// it shows a single read-only demo row.
+  Widget _accountsSection(BuildContext context, AppController app) {
+    final rows = <Widget>[];
+
+    if (app.isDemo) {
+      rows.add(_accountRow(
+        context,
+        name: app.accountName ?? 'Demo',
+        detail: 'Demo mode',
+      ));
+    } else {
+      final accounts = app.accounts;
+      if (accounts.isEmpty) {
+        rows.add(_accountRow(
+          context,
+          name: 'Not signed in',
+          detail: 'Add a Gmail account below',
+        ));
+      } else {
+        for (final account in accounts) {
+          rows.add(_accountRow(
+            context,
+            name: account.name ?? account.email,
+            detail: account.email,
+            onRemove: () => _confirmRemoveAccount(context, account.email),
+          ));
+        }
+      }
+      rows.add(GlassRow(
+        icon: CupertinoIcons.person_badge_plus,
+        title: 'Add account',
+        subtitle: 'Connect another Gmail inbox',
+        onTap: () => context.read<AppController>().addAccount(),
+      ));
+    }
+
+    return GlassSection(label: 'Accounts', children: rows);
+  }
+
+  /// A connected-account row: GlassRow layout, but the leading badge is an
+  /// initial avatar rather than an icon (so it is built by hand) and the
+  /// trailing affordance is a Remove button when [onRemove] is given.
+  Widget _accountRow(
+    BuildContext context, {
+    required String name,
+    required String detail,
+    VoidCallback? onRemove,
+  }) {
     final initial = name.isEmpty ? '?' : name.substring(0, 1).toUpperCase();
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
@@ -284,7 +326,7 @@ class SettingsScreen extends StatelessWidget {
                 ),
                 const SizedBox(height: 2),
                 Text(
-                  app.isDemo ? 'Demo mode' : (app.accountEmail ?? ''),
+                  detail,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
@@ -295,9 +337,55 @@ class SettingsScreen extends StatelessWidget {
               ],
             ),
           ),
+          if (onRemove != null) ...[
+            const SizedBox(width: 12),
+            CupertinoButton(
+              padding: EdgeInsets.zero,
+              minimumSize: const Size(44, 44),
+              onPressed: onRemove,
+              child: Text(
+                'Remove',
+                style: TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w600,
+                  color: Palette.destructive(context),
+                ),
+              ),
+            ),
+          ],
         ],
       ),
     );
+  }
+
+  /// Removing an account discards its merged insights and rebuilds from the
+  /// rest, so it confirms first.
+  Future<void> _confirmRemoveAccount(
+      BuildContext context, String email) async {
+    final controller = context.read<AppController>();
+    final confirmed = await showCupertinoModalPopup<bool>(
+      context: context,
+      builder: (sheetContext) => CupertinoActionSheet(
+        title: Text('Remove $email?'),
+        message: const Text(
+          'Its insights are cleared and NoMail rebuilds from your remaining '
+          'accounts. Removing the last account signs you out.',
+        ),
+        actions: [
+          CupertinoActionSheetAction(
+            isDestructiveAction: true,
+            onPressed: () => Navigator.pop(sheetContext, true),
+            child: const Text('Remove'),
+          ),
+        ],
+        cancelButton: CupertinoActionSheetAction(
+          isDefaultAction: true,
+          onPressed: () => Navigator.pop(sheetContext, false),
+          child: const Text('Cancel'),
+        ),
+      ),
+    );
+    if (confirmed == true) await controller.removeAccount(email);
   }
 
   /// Sync row while a sync is running: mirrors GlassRow's layout with a

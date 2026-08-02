@@ -388,6 +388,62 @@ class FeedItem {
       );
 }
 
+enum ReturnKind { returnWindow, warranty }
+
+/// A closing return window or an expiring warranty — money you can still get
+/// back or protection about to lapse, both of which quietly expire in the
+/// inbox. Anchored on [deadline] so a window about to close rises on Today.
+class ReturnItem {
+  final ReturnKind kind;
+  final String merchant;
+  final String? item;
+  final DateTime deadline;
+  final DateTime lastSeen;
+  final String sourceEmailId;
+  final String? url;
+
+  const ReturnItem({
+    required this.kind,
+    required this.merchant,
+    this.item,
+    required this.deadline,
+    required this.lastSeen,
+    required this.sourceEmailId,
+    this.url,
+  });
+
+  /// Once the deadline has passed there's nothing to act on.
+  bool get isStale =>
+      deadline.isBefore(DateTime.now().subtract(const Duration(days: 1)));
+
+  String get dedupeKey =>
+      '${kind.name}|${merchant.toLowerCase()}|${item?.toLowerCase() ?? ''}|'
+      '${deadline.toIso8601String().substring(0, 10)}';
+
+  Map<String, dynamic> toJson() => {
+        'kind': kind.name,
+        'merchant': merchant,
+        'item': item,
+        'deadline': deadline.toIso8601String(),
+        'lastSeen': lastSeen.toIso8601String(),
+        'sourceEmailId': sourceEmailId,
+        'url': url,
+      };
+
+  factory ReturnItem.fromJson(Map<String, dynamic> json) => ReturnItem(
+        kind: ReturnKind.values.firstWhere(
+          (k) => k.name == json['kind'],
+          orElse: () => ReturnKind.returnWindow,
+        ),
+        merchant: json['merchant'] as String,
+        item: json['item'] as String?,
+        deadline: DateTime.parse(json['deadline'] as String),
+        lastSeen: DateTime.parse(json['lastSeen'] as String),
+        sourceEmailId: json['sourceEmailId'] as String,
+        url: json['url'] as String?,
+      );
+}
+
 enum PaymentKind { refund, failed }
 
 /// Money in motion that needs attention: a refund you should confirm landed,
@@ -590,6 +646,7 @@ class InsightSnapshot {
   final List<FeedItem> feed;
   final List<TravelItem> travel;
   final List<PaymentAlert> payments;
+  final List<ReturnItem> returns;
   final List<AttentionItem> attention;
   final DailyBrief? brief;
   final DateTime? lastSyncedAt;
@@ -603,6 +660,7 @@ class InsightSnapshot {
     this.feed = const [],
     this.travel = const [],
     this.payments = const [],
+    this.returns = const [],
     this.attention = const [],
     this.brief,
     this.lastSyncedAt,
@@ -617,6 +675,7 @@ class InsightSnapshot {
       feed.isEmpty &&
       travel.isEmpty &&
       payments.isEmpty &&
+      returns.isEmpty &&
       attention.isEmpty;
 
   /// Content from the last two weeks, newest first — the reading queue.
@@ -661,6 +720,10 @@ class InsightSnapshot {
       payments.where((p) => !p.isStale).toList()
         ..sort((a, b) => b.date.compareTo(a.date));
 
+  List<ReturnItem> get openReturns =>
+      returns.where((r) => !r.isStale).toList()
+        ..sort((a, b) => a.deadline.compareTo(b.deadline));
+
   /// Upcoming (non-cancelled, future) events, soonest first.
   List<EventItem> get upcomingEvents =>
       events.where((e) => e.isUpcoming).toList()
@@ -677,6 +740,7 @@ class InsightSnapshot {
     List<FeedItem>? feed,
     List<TravelItem>? travel,
     List<PaymentAlert>? payments,
+    List<ReturnItem>? returns,
     List<AttentionItem>? attention,
     DailyBrief? brief,
     DateTime? lastSyncedAt,
@@ -690,6 +754,7 @@ class InsightSnapshot {
         feed: feed ?? this.feed,
         travel: travel ?? this.travel,
         payments: payments ?? this.payments,
+        returns: returns ?? this.returns,
         attention: attention ?? this.attention,
         brief: brief ?? this.brief,
         lastSyncedAt: lastSyncedAt ?? this.lastSyncedAt,
@@ -704,6 +769,7 @@ class InsightSnapshot {
         'feed': feed.map((f) => f.toJson()).toList(),
         'travel': travel.map((t) => t.toJson()).toList(),
         'payments': payments.map((p) => p.toJson()).toList(),
+        'returns': returns.map((r) => r.toJson()).toList(),
         'attention': attention.map((a) => a.toJson()).toList(),
         'brief': brief?.toJson(),
         'lastSyncedAt': lastSyncedAt?.toIso8601String(),
@@ -732,6 +798,9 @@ class InsightSnapshot {
             .toList(),
         payments: ((json['payments'] ?? []) as List)
             .map((e) => PaymentAlert.fromJson(e as Map<String, dynamic>))
+            .toList(),
+        returns: ((json['returns'] ?? []) as List)
+            .map((e) => ReturnItem.fromJson(e as Map<String, dynamic>))
             .toList(),
         attention: ((json['attention'] ?? []) as List)
             .map((e) => AttentionItem.fromJson(e as Map<String, dynamic>))

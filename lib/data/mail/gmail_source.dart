@@ -28,7 +28,7 @@ class GmailSource implements MailSource {
         'subject:(bill OR due OR statement) newer_than:${_clamp(history, 60)}d',
       ],
       if (settings.scanDeliveries)
-        'subject:(shipped OR delivery OR delivered OR dispatched OR "out for delivery" OR "order confirmed") newer_than:${_clamp(history, 30)}d',
+        'subject:(shipped OR delivery OR delivered OR dispatched OR "out for delivery" OR "order confirmed" OR return OR warranty) newer_than:${_clamp(history, 30)}d',
       // Braces are Gmail's OR group.
       if (settings.scanEvents)
         '{subject:invitation subject:"updated invitation" subject:"canceled event" subject:meeting filename:ics} newer_than:${_clamp(history, 14)}d',
@@ -42,28 +42,57 @@ class GmailSource implements MailSource {
   static int _clamp(int history, int cap) => history < cap ? history : cap;
 
   /// Fetches candidate emails across all insight queries, deduped by id.
+  ///
+  /// A scan is one request per query plus one per message — hundreds of calls
+  /// over a phone's network. Individual failures are expected at that volume,
+  /// so neither a dead query nor a dead message aborts the run: a scan that
+  /// returns most of the mail is worth far more than one that returns an
+  /// error. [failures] counts what was lost.
   @override
   Future<List<EmailMeta>> fetchCandidates({int? maxPerQuery}) async {
     final seen = <String>{};
     final results = <EmailMeta>[];
     final perQuery = maxPerQuery ?? settings.maxEmailsPerQuery;
+    failures = 0;
 
     for (final query in queriesFor(settings)) {
-      final list = await api.users.messages.list(
-        'me',
-        q: query,
-        maxResults: perQuery,
-      );
-      for (final ref in list.messages ?? const <Message>[]) {
+      final List<Message> refs;
+      try {
+        final list = await api.users.messages.list(
+          'me',
+          q: query,
+          maxResults: perQuery,
+        );
+        refs = list.messages ?? const <Message>[];
+      } catch (_) {
+        failures++;
+        continue;
+      }
+
+      for (final ref in refs) {
         final id = ref.id;
         if (id == null || !seen.add(id)) continue;
-        final message = await api.users.messages.get('me', id, format: 'full');
-        final meta = _toMeta(message);
-        if (meta != null) results.add(meta);
+        try {
+          final message =
+              await api.users.messages.get('me', id, format: 'full');
+          final meta = _toMeta(message);
+          if (meta != null) results.add(meta);
+        } catch (_) {
+          failures++;
+        }
       }
+    }
+
+    // Everything failed: that's not a partial result, it's a broken sync.
+    if (results.isEmpty && failures > 0) {
+      throw StateError(
+          'Gmail unreachable — $failures request${failures == 1 ? '' : 's'} failed');
     }
     return results;
   }
+
+  /// Requests dropped during the last [fetchCandidates].
+  int failures = 0;
 
   EmailMeta? _toMeta(Message message) {
     final id = message.id;

@@ -9,8 +9,8 @@ import '../data/ai/insight_ai.dart';
 import '../data/ai/knowledge_learner.dart';
 import '../data/ai/openrouter_ai.dart';
 import '../data/mail/gmail_auth.dart';
-import '../data/mail/gmail_source.dart';
 import '../data/mail/mail_source.dart';
+import '../data/mail/multi_gmail_source.dart';
 import '../data/store/insight_store.dart';
 import '../data/store/knowledge_store.dart';
 import '../data/store/settings_store.dart';
@@ -86,9 +86,18 @@ class AppController extends ChangeNotifier {
   String get aiLabel => _ai.label;
   String? get error => _error;
   String? get accountEmail =>
-      _isDemo ? 'demo@nomail.app' : _auth.account?.email;
+      _isDemo ? 'demo@nomail.app' : _auth.first?.email;
   String? get accountName =>
-      _isDemo ? 'Demo' : _auth.account?.displayName ?? _auth.account?.email;
+      _isDemo ? 'Demo' : _auth.first?.name;
+
+  /// Every connected Gmail account, for the Settings Accounts section. Empty in
+  /// demo mode (the UI renders a read-only demo row instead).
+  List<({String email, String? name, String? photoUrl})> get accounts =>
+      _isDemo
+          ? const []
+          : _auth.accounts;
+
+  bool get hasAccounts => _auth.hasAccounts;
 
   bool get showMoneyShot => _showMoneyShot;
   BackfillStats get backfillStats => BackfillStats.fromSnapshot(_snapshot);
@@ -194,15 +203,16 @@ class AppController extends ChangeNotifier {
       notifyListeners();
       return;
     }
-    final api = _auth.api;
-    if (api == null) return;
+    final apis = _auth.apis;
+    if (apis.isEmpty) return;
 
     _phase = AppPhase.syncing;
     notifyListeners();
 
     try {
       final result =
-          await _engine(GmailSource(api, settings: _settings)).runReported(
+          await _engine(MultiGmailSource(apis, settings: _settings))
+              .runReported(
         previous: _snapshot,
         settings: _settings,
         playbook: _playbook,
@@ -268,8 +278,36 @@ class AppController extends ChangeNotifier {
     await sync();
   }
 
+  /// Connects an additional Gmail account, then merges its mail into the
+  /// existing snapshot on the next sync. No-ops in demo mode.
+  Future<void> addAccount() async {
+    if (_isDemo) return;
+    _error = null;
+    final ok = await _auth.addAccount();
+    if (!ok) {
+      _error = _auth.isConfigured
+          ? 'Adding the account was cancelled or failed.'
+          : 'Google OAuth is not configured (missing GOOGLE_CLIENT_ID).';
+      notifyListeners();
+      return;
+    }
+    await sync();
+  }
+
+  /// Disconnects [email]. Re-syncs from the remaining accounts, or signs the
+  /// user out entirely when the last account is removed.
+  Future<void> removeAccount(String email) async {
+    if (_isDemo) return;
+    await _auth.removeAccount(email);
+    if (!_auth.hasAccounts) {
+      await signOut();
+      return;
+    }
+    await rescan();
+  }
+
   Future<void> signOut() async {
-    await _auth.signOut();
+    await _auth.signOutAll();
     await _store.clear();
     _snapshot = const InsightSnapshot();
     _isDemo = false;

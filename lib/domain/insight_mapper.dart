@@ -133,6 +133,32 @@ List<Insight> snapshotToInsights(InsightSnapshot s) {
     ));
   }
 
+  for (final r in s.openReturns) {
+    final isReturn = r.kind == ReturnKind.returnWindow;
+    out.add(Insight(
+      id: 'return:${r.sourceEmailId}',
+      domain: InsightDomain.commerce,
+      title: r.merchant,
+      subtitle: isReturn ? 'Return window' : 'Warranty',
+      caption: '${isReturn ? 'Return by' : 'Expires'} ${formatDay(r.deadline)}',
+      anchorDate: r.deadline,
+      icon: isReturn
+          ? CupertinoIcons.arrow_2_squarepath
+          : CupertinoIcons.shield,
+      brandKey: r.merchant,
+      weight: 58,
+      actions: [
+        if (r.url != null)
+          InsightAction(
+            label: isReturn ? 'Start return' : 'View warranty',
+            uri: Uri.parse(r.url!),
+            kind: ActionKind.openLink,
+          ),
+        openEmailAction(r.sourceEmailId),
+      ],
+    ));
+  }
+
   for (final f in s.recentFeed) {
     out.add(Insight(
       id: 'feed:${f.sourceEmailId}',
