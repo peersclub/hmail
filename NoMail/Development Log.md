@@ -1,5 +1,23 @@
 # Development Log
 
+## 2026-08-02 — Multi-account managed properly (commit `b6e9438`)
+
+Victor: "I still feel like multiple Gmail account addition is not managed better." An audit agreed — and found a bug on the way.
+
+**Bug fixed first (`d7d8c81`):** "Open email" had been broken for every real account since multi-account landed — the `a0:`/`a1:` id prefix was baked into the Gmail URL. Now stripped and mapped to Gmail's `/mail/u/<N>/` authuser slot, so account B's email opens in account B's inbox.
+
+**P0 — accounts survive restarts.** google_sign_in 7.x restores only the single active platform session at boot, so added accounts silently vanished on relaunch. New `AccountsStore` (`connected_accounts_v1`) remembers them; disconnected ones surface as dimmed **"Session ended — tap to reconnect"** rows. Reconnect drives the Google sheet and narrates honestly if the OS returns a different account.
+
+**P1 — narrated add-account.** `AddAccountResult` (added / alreadyConnected / failed) → in-flow lines under the Accounts rows: "Connected x@…", the already-connected guidance (explains "Use another account" in Google's sheet — the iOS re-offer quirk), or the failure with retry.
+
+**P1 — per-account sync health.** `MultiGmailSource.lastFailures` records which inbox failed and why (401 → "remove and reconnect"); account rows show it in destructive text after each sync — no more silently stale inboxes.
+
+**P1 — attribution.** With 2+ accounts, insight action sheets say "From x@gmail.com" (`accountForInsight` maps the `aN:` prefix). Suppressed with a single account (noise).
+
+**P2s deferred:** surgical removal (still clear+rescan), scan-estimate × account count, backup multi-account awareness. **Still needs Victor's device:** the live second-account picker test.
+
+322 tests pass; installed to iPhone.
+
 ## 2026-08-02 — App-wide user-journey overhaul
 
 Victor's verdict on the first backup UX ("I click back up… somewhere in the bottom shows Google drive backup failed") triggered a journey pass over the whole app: **feedback must render on the control the user tapped, name its cause, and offer the recovery.**
