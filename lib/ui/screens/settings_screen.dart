@@ -30,11 +30,9 @@ class SettingsScreen extends StatelessWidget {
         : '${formatDay(app.snapshot.lastSyncedAt!)} · '
             '${app.snapshot.emailsScanned} emails scanned';
 
-    // An error renders under the section whose action produced it — account
-    // errors under Accounts, sync errors under Data — never off-screen.
+    // Sync errors render under the Data section whose action produced them;
+    // account actions narrate themselves inside the Accounts section.
     final err = app.error;
-    final isAuthError = err != null &&
-        (err.contains('sign-in') || err.contains('account'));
 
     return ListView(
       padding: EdgeInsets.zero,
@@ -42,7 +40,6 @@ class SettingsScreen extends StatelessWidget {
         SizedBox(height: MediaQuery.paddingOf(context).top + 6),
         const GlassHeader(eyebrow: 'Account & privacy', title: 'Settings'),
         _accountsSection(context, app),
-        if (isAuthError) _errorLine(context, err),
         GlassSection(
           label: 'Data',
           children: [
@@ -59,7 +56,7 @@ class SettingsScreen extends StatelessWidget {
                     onTap: () => context.read<AppController>().sync(),
                   ),
                   // The failure lands right under the row that can retry it.
-                  if (err != null && !isAuthError)
+                  if (err != null)
                     _inlineError(context, '$err Tap Sync Now to retry.'),
                 ],
               ),
@@ -216,18 +213,6 @@ class SettingsScreen extends StatelessWidget {
     );
   }
 
-  /// Standalone error line between sections (for section-level failures like
-  /// account add/remove, whose section builds its rows dynamically).
-  Widget _errorLine(BuildContext context, String message) {
-    final color = Palette.destructive(context);
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(34, 0, 34, 10),
-      child: Text(
-        message,
-        style: TextStyle(fontSize: 13, height: 1.35, color: color),
-      ),
-    );
-  }
 
   /// Signing out clears the local insight cache — that deserves the same
   /// confirm the less-destructive account removal already gets.
@@ -369,13 +354,33 @@ class SettingsScreen extends StatelessWidget {
         ));
       } else {
         for (final account in accounts) {
+          final issue = app.accountSyncIssues[account.email];
           rows.add(_accountRow(
             context,
             name: account.name ?? account.email,
-            detail: account.email,
+            // Priority: a live problem beats the resting email line, and a
+            // lost session beats both — each states its own next step.
+            detail: !account.connected
+                ? 'Session ended — tap to reconnect'
+                : (issue ?? account.email),
+            detailColor: (!account.connected || issue != null)
+                ? Palette.destructive(context)
+                : null,
+            dimmed: !account.connected,
+            onTap: account.connected
+                ? null
+                : () =>
+                    context.read<AppController>().reconnectAccount(account.email),
             onRemove: () => _confirmRemoveAccount(context, account.email),
           ));
         }
+      }
+      // In-flow narration for the last account action, under the rows it
+      // concerns — connected, already-connected guidance, or the failure.
+      if (app.accountsError != null) {
+        rows.add(_inlineError(context, app.accountsError!));
+      } else if (app.accountsNotice != null) {
+        rows.add(_inlineNotice(context, app.accountsNotice!));
       }
       rows.add(GlassRow(
         icon: CupertinoIcons.person_badge_plus,
@@ -395,10 +400,13 @@ class SettingsScreen extends StatelessWidget {
     BuildContext context, {
     required String name,
     required String detail,
+    Color? detailColor,
+    bool dimmed = false,
+    VoidCallback? onTap,
     VoidCallback? onRemove,
   }) {
     final initial = name.isEmpty ? '?' : name.substring(0, 1).toUpperCase();
-    return Padding(
+    final row = Padding(
       padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
       child: Row(
         children: [
@@ -432,17 +440,19 @@ class SettingsScreen extends StatelessWidget {
                   style: TextStyle(
                     fontSize: 17,
                     letterSpacing: -0.4,
-                    color: Palette.label(context),
+                    color: dimmed
+                        ? Palette.secondaryLabel(context)
+                        : Palette.label(context),
                   ),
                 ),
                 const SizedBox(height: 2),
                 Text(
                   detail,
-                  maxLines: 1,
+                  maxLines: 2,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
                     fontSize: 15,
-                    color: Palette.secondaryLabel(context),
+                    color: detailColor ?? Palette.secondaryLabel(context),
                   ),
                 ),
               ],
@@ -464,6 +474,37 @@ class SettingsScreen extends StatelessWidget {
               ),
             ),
           ],
+        ],
+      ),
+    );
+    if (onTap == null) return row;
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: onTap,
+      child: row,
+    );
+  }
+
+  /// A quiet in-flow confirmation under the account rows (accent ✓).
+  Widget _inlineNotice(BuildContext context, String message) {
+    final color = Palette.accent(context);
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(18, 0, 18, 12),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.only(top: 1.5),
+            child: Icon(CupertinoIcons.checkmark_circle_fill,
+                size: 14, color: color),
+          ),
+          const SizedBox(width: 7),
+          Expanded(
+            child: Text(
+              message,
+              style: TextStyle(fontSize: 13, height: 1.35, color: color),
+            ),
+          ),
         ],
       ),
     );

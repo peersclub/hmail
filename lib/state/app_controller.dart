@@ -15,6 +15,7 @@ import '../data/backup/icloud_backup_target.dart';
 import '../data/mail/gmail_auth.dart';
 import '../data/mail/mail_source.dart';
 import '../data/mail/multi_gmail_source.dart';
+import '../data/store/accounts_store.dart';
 import '../data/store/backup_prefs_store.dart';
 import '../data/store/insight_store.dart';
 import '../data/store/knowledge_store.dart';
@@ -61,6 +62,13 @@ class AppController extends ChangeNotifier {
     timeline: TimelineOrderStore(),
   );
   final BackupPrefsStore _backupPrefsStore = BackupPrefsStore();
+  final AccountsStore _accountsStore = AccountsStore();
+
+  /// Accounts remembered across launches (see [accounts]).
+  List<StoredAccount> _knownAccounts = [];
+  Map<String, String> _accountSyncIssues = const {};
+  String? _accountsNotice;
+  String? _accountsError;
   final Map<String, BackupTarget>? _backupTargetsOverride;
   late final Map<String, BackupTarget> _backupTargets =
       _backupTargetsOverride ??
@@ -138,14 +146,53 @@ class AppController extends ChangeNotifier {
   String? get accountName =>
       _isDemo ? 'Demo' : _auth.first?.name;
 
-  /// Every connected Gmail account, for the Settings Accounts section. Empty in
-  /// demo mode (the UI renders a read-only demo row instead).
-  List<({String email, String? name, String? photoUrl})> get accounts =>
-      _isDemo
-          ? const []
-          : _auth.accounts;
+  /// Accounts NoMail knows about, live ones first. `connected: false` marks a
+  /// remembered account whose session didn't survive the restart —
+  /// google_sign_in 7.x only silently restores the platform's single active
+  /// session, so every other stored account boots into a reconnect state
+  /// instead of silently vanishing from the list.
+  List<({String email, String? name, String? photoUrl, bool connected})>
+      get accounts {
+    if (_isDemo) return const [];
+    final live = _auth.accounts;
+    final liveEmails = {for (final a in live) a.email};
+    return [
+      for (final a in live)
+        (email: a.email, name: a.name, photoUrl: a.photoUrl, connected: true),
+      for (final s in _knownAccounts)
+        if (!liveEmails.contains(s.email))
+          (
+            email: s.email,
+            name: s.name,
+            photoUrl: s.photoUrl,
+            connected: false,
+          ),
+    ];
+  }
 
   bool get hasAccounts => _auth.hasAccounts;
+
+  /// Per-account trouble from the last sync (email → short reason). Rebuilt
+  /// on every sync; empty when every inbox read cleanly.
+  Map<String, String> get accountSyncIssues => _accountSyncIssues;
+
+  /// In-flow result lines for the Accounts section — same scoped-feedback
+  /// pattern as backup: the message renders under the control that caused it.
+  String? get accountsNotice => _accountsNotice;
+  String? get accountsError => _accountsError;
+
+  /// Which account an insight came from, for attribution when several
+  /// inboxes are merged. Accepts either a bare source-email id or a full
+  /// insight id ('bill:a1:xyz'); returns null when only one (or no) account
+  /// is connected — attribution is noise until inboxes can be confused.
+  String? accountForInsight(String id) {
+    final live = _auth.accounts;
+    if (_isDemo || live.length < 2) return null;
+    final m = RegExp(r'(?:^|:)a(\d+):').firstMatch(id);
+    if (m == null) return null;
+    final index = int.parse(m.group(1)!);
+    return index < live.length ? live[index].email : null;
+  }
 
   bool get showMoneyShot => _showMoneyShot;
   BackfillStats get backfillStats => BackfillStats.fromSnapshot(_snapshot);
@@ -454,6 +501,7 @@ class AppController extends ChangeNotifier {
     _settings = await _settingsStore.load();
     _playbook = await _knowledgeStore.load();
     _backupPrefs = await _backupPrefsStore.load();
+    _knownAccounts = await _accountsStore.load();
     final cached = await _store.load();
     if (cached != null && !cached.isEmpty) _snapshot = cached;
     _hadInsights = !_snapshot.isEmpty;
@@ -464,6 +512,10 @@ class AppController extends ChangeNotifier {
 
     final resumed = await _auth.resumeSilently();
     if (resumed) {
+      // The platform restores only its single active session; merge it into
+      // the remembered list so every *other* stored account surfaces as a
+      // reconnect row rather than silently disappearing.
+      await _persistAccounts();
       _phase = AppPhase.ready;
       notifyListeners();
       await sync();
@@ -499,6 +551,7 @@ class AppController extends ChangeNotifier {
 
     // Only now does the app leave the sign-in screen — for a real sync.
     _isDemo = false;
+    await _persistAccounts();
     _phase = AppPhase.syncing;
     notifyListeners();
     await sync();
@@ -518,6 +571,10 @@ class AppController extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// The source of the most recent real sync, kept so per-account failures
+  /// can be read back after the run.
+  MultiGmailSource? _multiSource;
+
   Future<void> sync() async {
     if (_isDemo) {
       _snapshot = await _engine(DemoMailSource(), ai: const NoAi()).run();
@@ -533,8 +590,11 @@ class AppController extends ChangeNotifier {
 
     try {
       final result =
-          await _engine(MultiGmailSource(apis, settings: _settings))
-              .runReported(
+          await _engine(_multiSource = MultiGmailSource(
+        apis,
+        settings: _settings,
+        accountEmails: [for (final a in _auth.accounts) a.email],
+      )).runReported(
         previous: _snapshot,
         settings: _settings,
         playbook: _playbook,
@@ -554,6 +614,12 @@ class AppController extends ChangeNotifier {
         _playbook = result.playbook;
         await _knowledgeStore.save(_playbook);
       }
+      // Surface which inboxes were skipped — a silently failing account is
+      // how its insights quietly go stale.
+      _accountSyncIssues = {
+        for (final f in _multiSource?.lastFailures ?? const [])
+          f.account: f.message,
+      };
       _error = null;
       _afterSnapshotUpdate();
     } catch (e) {
@@ -612,33 +678,110 @@ class AppController extends ChangeNotifier {
   /// existing snapshot on the next sync. No-ops in demo mode.
   Future<void> addAccount() async {
     if (_isDemo) return;
-    _error = null;
-    final ok = await _auth.addAccount();
-    if (!ok) {
-      _error = _auth.isConfigured
-          ? 'Adding the account was cancelled or failed.'
-          : 'Google OAuth is not configured (missing GOOGLE_CLIENT_ID).';
+    _accountsNotice = null;
+    _accountsError = null;
+    notifyListeners();
+
+    final result = await _auth.addAccount();
+    switch (result) {
+      case AddAccountResult.added:
+        final added = _auth.accounts.last.email;
+        _accountsNotice = 'Connected $added';
+        await _persistAccounts();
+        notifyListeners();
+        await sync();
+      case AddAccountResult.alreadyConnected:
+        // The platform quirk: iOS re-offered the active account. Explain the
+        // way past it instead of pretending nothing happened.
+        _accountsNotice =
+            'That account is already connected. To add a different Gmail, '
+            'pick another account in Google\'s sheet — use "Use another '
+            'account" if it isn\'t listed.';
+        notifyListeners();
+      case AddAccountResult.failed:
+        _accountsError = _auth.isConfigured
+            ? 'Adding the account was cancelled or failed. Try again.'
+            : 'Google OAuth is not configured (missing GOOGLE_CLIENT_ID).';
+        notifyListeners();
+    }
+  }
+
+  /// Reconnects a remembered account whose session didn't survive a restart.
+  /// Drives the same Google sheet as adding; succeeds when the user picks
+  /// [email] there — picking a different account is still narrated honestly.
+  Future<void> reconnectAccount(String email) async {
+    if (_isDemo) return;
+    _accountsNotice = null;
+    _accountsError = null;
+    notifyListeners();
+
+    final result = await _auth.addAccount();
+    if (result == AddAccountResult.failed) {
+      _accountsError = 'Reconnecting was cancelled or failed. Try again.';
       notifyListeners();
       return;
     }
+    if (_auth.hasEmail(email)) {
+      _accountsNotice = 'Reconnected $email';
+      await _persistAccounts();
+      notifyListeners();
+      await sync();
+      return;
+    }
+    // The Google sheet returned some other account — it's connected now
+    // (never throw away a grant), but the one they asked for still isn't.
+    final got = _auth.accounts.last.email;
+    _accountsNotice =
+        'Google connected $got instead. $email still needs reconnecting — '
+        'tap it and choose that account in Google\'s sheet.';
+    await _persistAccounts();
+    notifyListeners();
     await sync();
+  }
+
+  /// Merges the live accounts into the remembered list (live data wins,
+  /// remembered-but-disconnected entries survive) and persists it.
+  Future<void> _persistAccounts() async {
+    final live = _auth.accounts;
+    final liveEmails = {for (final a in live) a.email};
+    _knownAccounts = [
+      for (final a in live)
+        (email: a.email, name: a.name, photoUrl: a.photoUrl),
+      for (final s in _knownAccounts)
+        if (!liveEmails.contains(s.email)) s,
+    ];
+    await _accountsStore.save(_knownAccounts);
   }
 
   /// Disconnects [email]. Re-syncs from the remaining accounts, or signs the
   /// user out entirely when the last account is removed.
   Future<void> removeAccount(String email) async {
     if (_isDemo) return;
+    _accountsNotice = null;
+    _accountsError = null;
     await _auth.removeAccount(email);
-    if (!_auth.hasAccounts) {
+    // Forget it across launches too, or it would resurrect as "reconnect".
+    _knownAccounts =
+        [for (final s in _knownAccounts) if (s.email != email) s];
+    await _accountsStore.save(_knownAccounts);
+    _accountSyncIssues =
+        {for (final e in _accountSyncIssues.entries) if (e.key != email) e.key: e.value};
+    if (!_auth.hasAccounts && _knownAccounts.isEmpty) {
       await signOut();
       return;
     }
-    await rescan();
+    notifyListeners();
+    if (_auth.hasAccounts) await rescan();
   }
 
   Future<void> signOut() async {
     await _auth.signOutAll();
     await _store.clear();
+    await _accountsStore.clear();
+    _knownAccounts = [];
+    _accountSyncIssues = const {};
+    _accountsNotice = null;
+    _accountsError = null;
     _snapshot = const InsightSnapshot();
     _isDemo = false;
     _error = null;

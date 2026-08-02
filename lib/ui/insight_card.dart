@@ -1,8 +1,10 @@
 import 'package:flutter/cupertino.dart';
+import 'package:provider/provider.dart';
 
 import '../core/brand_icons.dart';
 import '../core/palette.dart';
 import '../domain/insight.dart';
+import '../state/app_controller.dart';
 import 'action_sheet.dart';
 import 'glass/glass.dart';
 
@@ -35,6 +37,14 @@ class InsightCard extends StatelessWidget {
           : () => showInsightActions(
                 context,
                 title: insight.title,
+                // With several inboxes merged, say which one this came from —
+                // a work bill and a personal bill must not be confusable.
+                message: switch (context
+                    .read<AppController>()
+                    .accountForInsight(insight.id)) {
+                  final String email => 'From $email',
+                  null => null,
+                },
                 actions: insight.actions,
               ),
     );

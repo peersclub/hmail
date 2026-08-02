@@ -22,7 +22,25 @@ class MultiGmailSource implements MailSource {
   final List<GmailApi> apis;
   final ScanSettings settings;
 
-  MultiGmailSource(this.apis, {this.settings = const ScanSettings()});
+  /// Email addresses aligned with [apis] by index, used to label failures.
+  /// Optional so single-account and test call sites stay unchanged.
+  final List<String> accountEmails;
+
+  /// Accounts that failed during the most recent [fetchCandidates] run, with
+  /// a short human reason. A failing inbox is skipped so the sync survives —
+  /// but skipped silently is how an account's insights quietly go stale, so
+  /// the controller surfaces these on the account rows after every sync.
+  final List<({String account, String message})> lastFailures = [];
+
+  MultiGmailSource(
+    this.apis, {
+    this.settings = const ScanSettings(),
+    this.accountEmails = const [],
+  });
+
+  String _label(int index) => index < accountEmails.length
+      ? accountEmails[index]
+      : 'Account ${index + 1}';
 
   @override
   Future<List<EmailMeta>> fetchCandidates({
@@ -30,6 +48,7 @@ class MultiGmailSource implements MailSource {
   }) async {
     final merged = <EmailMeta>[];
     final seen = <String>{};
+    lastFailures.clear();
 
     for (var index = 0; index < apis.length; index++) {
       final prefix = 'a$index:';
@@ -57,8 +76,15 @@ class MultiGmailSource implements MailSource {
             ),
           );
         }
-      } catch (_) {
-        // Skip this account; a single bad inbox must not fail the sync.
+      } catch (e) {
+        // Skip this account — a single bad inbox must not fail the sync —
+        // but remember who failed and why, so the UI can say so.
+        lastFailures.add((
+          account: _label(index),
+          message: e is DetailedApiRequestError && e.status == 401
+              ? 'Session expired — remove and reconnect this account'
+              : 'Couldn\'t read this inbox on the last sync',
+        ));
         continue;
       }
     }

@@ -93,6 +93,7 @@ class MoneyScreen extends StatelessWidget {
                     onTap: () => showInsightActions(
                       context,
                       title: sub.service,
+                      message: _attribution(context, sub.sourceEmailId),
                       actions: actionsForSubscription(sub),
                     ),
                   ),
@@ -119,7 +120,12 @@ class MoneyScreen extends StatelessWidget {
                     onTap: () => showInsightActions(
                       context,
                       title: bill.issuer,
-                      message: formatMoney(bill.amount, bill.currency),
+                      message: [
+                        formatMoney(bill.amount, bill.currency),
+                        if (_attribution(context, bill.sourceEmailId)
+                            case final String from)
+                          from,
+                      ].join(' · '),
                       actions: actionsForBill(bill),
                     ),
                   ),
@@ -293,3 +299,12 @@ class _LegendEntry extends StatelessWidget {
     );
   }
 }
+
+/// "From x@gmail.com" when several inboxes are merged, else null (noise).
+String? _attribution(BuildContext context, String sourceEmailId) {
+  final email =
+      context.read<AppController>().accountForInsight(sourceEmailId);
+  return email == null ? null : 'From $email';
+}
+
+

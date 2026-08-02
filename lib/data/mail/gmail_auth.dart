@@ -25,6 +25,20 @@ enum DriveAuthIssue {
 /// Result of a Drive authorization attempt: exactly one side is non-null.
 typedef DriveAuth = ({drive.DriveApi? api, DriveAuthIssue? issue});
 
+/// What an interactive add-account attempt actually did — the UI narrates
+/// each outcome instead of treating "nothing visibly changed" as success.
+enum AddAccountResult {
+  /// A new account was connected (or a stored one reconnected).
+  added,
+
+  /// The OS handed back an account that was already connected; its client
+  /// was refreshed but nothing new appeared.
+  alreadyConnected,
+
+  /// Cancelled or failed — no account was connected.
+  failed,
+}
+
 /// One connected Gmail account: the signed-in Google identity paired with an
 /// authorized read-only [GmailApi] client.
 class GmailAccount {
@@ -99,25 +113,34 @@ class GmailAuth {
 
   /// Interactive add of an account. Presents Google sign-in, authorizes the
   /// read-only scope, and appends the account when its email isn't already
-  /// connected. Returns true on success (including when the account is new);
-  /// false on cancel/failure. If the OS returns an already-connected account,
-  /// this is a no-op that still returns true.
-  Future<bool> addAccount() async {
-    if (!isConfigured) return false;
+  /// connected. The result says what actually happened so the UI can narrate
+  /// it — in particular the platform quirk where the OS re-offers an account
+  /// that's already connected.
+  Future<AddAccountResult> addAccount() async {
+    if (!isConfigured) return AddAccountResult.failed;
     try {
       await _ensureInitialized();
       final account =
           await GoogleSignIn.instance.authenticate(scopeHint: scopes);
-      return await _authorizeAndAdd(account, interactive: true);
+      final existedBefore = hasEmail(account.email);
+      final ok = await _authorizeAndAdd(account, interactive: true);
+      if (!ok) return AddAccountResult.failed;
+      return existedBefore
+          ? AddAccountResult.alreadyConnected
+          : AddAccountResult.added;
     } on GoogleSignInException {
-      return false;
+      return AddAccountResult.failed;
     } catch (_) {
-      return false;
+      return AddAccountResult.failed;
     }
   }
 
+  /// Whether [email] is currently connected (live, this session).
+  bool hasEmail(String email) => _accounts.any((a) => a.email == email);
+
   /// Alias for [addAccount] — connects the first (or an additional) account.
-  Future<bool> signIn() => addAccount();
+  Future<bool> signIn() async =>
+      (await addAccount()) != AddAccountResult.failed;
 
   Future<bool> _authorizeAndAdd(GoogleSignInAccount account,
       {required bool interactive}) async {
