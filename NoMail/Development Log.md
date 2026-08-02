@@ -1,5 +1,24 @@
 # Development Log
 
+## 2026-08-02 — Multi-account + Returns/warranty domain (commit `fb70aae`)
+
+Two subsystems landed in one commit, plus a regression fix.
+
+**Returns/warranty domain (new `InsightDomain.commerce` items).** Followed the adapter recipe end-to-end with zero navigation/screen changes:
+- `ReturnItem` model (`returnWindow` | `warranty`), deadline + `isStale` (past by >1 day) + dedupe by kind/merchant/deadline-day.
+- `extractReturn`: only fires when a deadline is parsed *near* the return/warranty phrase, so footer "easy returns" boilerplate is ignored. Routed **before** `extractDelivery` so a "delivered, return by X" email surfaces as an actionable return, not an inactive delivery.
+- Deliveries Gmail query widened with `return`/`warranty` (no new query → no scan-settings churn). Mapper block (weight 58, `arrow_2_squarepath`/`shield` icons, Start-return / View-warranty actions). Sync build + `applyVerdicts` passthrough. Store merge + key `v7` → **`v8`**. Demo fixtures: Myntra return window, boAt warranty.
+
+**Multi-account Gmail** (built by a parallel agent, verified green): `GmailAuth` now holds `List<GmailAccount>` with `addAccount`/`removeAccount`/`signOutAll` (dedupe by email); new `MultiGmailSource` fans out one `GmailSource` per account and prefixes ids `a0:`/`a1:` to prevent cross-account collisions; `AppController` accounts API; Settings **Accounts** section with per-account Remove + "Add account".
+
+**Regression caught + fixed.** `runReported()` — the path the live app uses — had been rewritten (by the concurrent knowledge-system work) to merge learned recipes but silently **dropped `travel` and `payments`** from the snapshot; only the unused `run()` path still carried them. So flights and refunds/failed-payments never reached the UI. Restored both lists and added a regression test asserting travel/payments/returns all survive `runReported`.
+
+**Status.** 278 tests pass, `flutter analyze` clean. Release build signed (team `68FA4847UT`) and installed to *Suresh Victor's iPhone* (`com.nomail.nomail`) over the wireless connection.
+
+**Needs a live device check (google_sign_in 7.x limitation).** The N-distinct-accounts flow can't be proven without it: sign in as account A, then Settings → Accounts → Add account and pick a *different* Google account B. If iOS returns A again instead of offering B, that's the OS-level single-active-session behaviour, not a bug — the data layer already dedupes and accepts B the moment the OS hands it back.
+
+Related: [[Roadmap]], [[Architecture]]
+
 ## 2026-08-01 — Recovery + Phase 1
 
 **Context.** Repo located at `peersclub/hmail` (single commit, 2025-08-21), cloned to `/Users/Victor/Projects22/hmail`. Audit found the README describing a full product while the code was a demo-mode prototype: sign-in stubbed (`return false`), three hardcoded emails, canned orders/subscriptions/bills, and a retired Claude model in the AI service.
