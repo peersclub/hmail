@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 
 import '../core/action_launcher.dart';
 import '../core/notification_service.dart';
+import '../ui/action_sheet.dart' show installedApps;
 import '../data/ai/ai_status.dart';
 import '../data/ai/insight_ai.dart';
 import '../data/ai/knowledge_learner.dart';
@@ -19,6 +20,7 @@ import '../data/store/accounts_store.dart';
 import '../data/store/backup_prefs_store.dart';
 import '../data/store/insight_store.dart';
 import '../data/store/knowledge_store.dart';
+import '../data/store/link_feedback_store.dart';
 import '../data/store/settings_store.dart';
 import '../data/store/timeline_order_store.dart';
 import '../data/sync/sync_engine.dart';
@@ -27,6 +29,7 @@ import '../domain/backfill_stats.dart';
 import '../domain/backup_bundle.dart';
 import '../domain/backup_prefs.dart';
 import '../domain/knowledge.dart';
+import '../domain/link_feedback.dart';
 import '../domain/models.dart';
 import '../domain/scan_settings.dart';
 import '../domain/sync_report.dart';
@@ -49,6 +52,7 @@ class AppController extends ChangeNotifier {
   final NotificationService _notifications;
   final SettingsStore _settingsStore;
   final KnowledgeStore _knowledgeStore;
+  final LinkFeedbackStore _feedbackStore;
   final KnowledgeLearner _learner;
   final AiStatusService aiStatus;
 
@@ -88,6 +92,7 @@ class AppController extends ChangeNotifier {
     SettingsStore? settingsStore,
     AiStatusService? aiStatusService,
     KnowledgeStore? knowledgeStore,
+    LinkFeedbackStore? feedbackStore,
     KnowledgeLearner? learner,
     Map<String, BackupTarget>? backupTargets,
   })  : _backupTargetsOverride = backupTargets,
@@ -97,6 +102,7 @@ class AppController extends ChangeNotifier {
         _notifications = notifications ?? NotificationService(),
         _settingsStore = settingsStore ?? SettingsStore(),
         _knowledgeStore = knowledgeStore ?? KnowledgeStore(),
+        _feedbackStore = feedbackStore ?? LinkFeedbackStore(),
         _learner = learner ?? KnowledgeLearner(),
         aiStatus = aiStatusService ?? AiStatusService();
 
@@ -114,6 +120,22 @@ class AppController extends ChangeNotifier {
   ScanSettings _settings = const ScanSettings();
   SyncReport _lastReport = SyncReport.empty();
   SyncStage _stage = SyncStage.idle;
+
+  LinkFeedbackLog _feedback = const LinkFeedbackLog();
+
+  /// Which learned recipes have produced links the user reported as wrong.
+  /// Surfaced in the Knowledge screen so a bad template is visible rather
+  /// than quietly wasting taps.
+  List<String> get suspectKnowledge => _feedback.suspectKnowledgeTypes;
+
+  /// Records how a link turned out. The signal is worth persisting even
+  /// though nothing acts on it automatically yet — deleting a recipe is the
+  /// user's call, not ours.
+  Future<void> recordLinkFeedback(LinkFeedback feedback) async {
+    _feedback = _feedback.add(feedback);
+    notifyListeners();
+    await _feedbackStore.save(_feedback);
+  }
 
   Playbook _playbook = Playbook.empty;
 
@@ -483,6 +505,7 @@ class AppController extends ChangeNotifier {
   Future<void> _reloadFromStores() async {
     _settings = await _settingsStore.load();
     _playbook = await _knowledgeStore.load();
+    _feedback = await _feedbackStore.load();
     final snap = await _store.load();
     if (snap != null) {
       _snapshot = snap;
@@ -505,6 +528,10 @@ class AppController extends ChangeNotifier {
     final cached = await _store.load();
     if (cached != null && !cached.isEmpty) _snapshot = cached;
     _hadInsights = !_snapshot.isEmpty;
+
+    // Warm the installed-app sweep so the first action sheet is instant and
+    // already knows which apps to name.
+    unawaited(installedApps.detect());
 
     // Not awaited: the iOS permission dialog must float over a live app,
     // not hold boot (and sign-in) hostage until it's answered.

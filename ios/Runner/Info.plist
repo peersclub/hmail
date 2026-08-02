@@ -37,6 +37,52 @@
 	<string>$(FLUTTER_BUILD_NUMBER)</string>
 	<key>GIDClientID</key>
 	<string>129153074260-ek9chll55ieif8e39gv6qupb7d2tmpiv.apps.googleusercontent.com</string>
+	<key>LSApplicationQueriesSchemes</key>
+	<array>
+		<string>gpay</string>
+		<string>phonepe</string>
+		<string>paytmmp</string>
+		<string>bhim</string>
+		<string>credpay</string>
+		<string>amazonpay</string>
+		<string>delhivery</string>
+		<string>bluedart</string>
+		<string>dtdc</string>
+		<string>ekart</string>
+		<string>xpressbees</string>
+		<string>ecomexpress</string>
+		<string>indiapost</string>
+		<string>shadowfax</string>
+		<string>shiprocket</string>
+		<string>fedex</string>
+		<string>dhl</string>
+		<string>ups</string>
+		<string>com.amazon.mobile.shopping</string>
+		<string>flipkart</string>
+		<string>myntra</string>
+		<string>ajio</string>
+		<string>meesho</string>
+		<string>nykaa</string>
+		<string>zepto</string>
+		<string>blinkit</string>
+		<string>swiggy</string>
+		<string>zomato</string>
+		<string>jiomart</string>
+		<string>tatacliq</string>
+		<string>bigbasket</string>
+		<string>makemytrip</string>
+		<string>cleartrip</string>
+		<string>ixigo</string>
+		<string>irctc</string>
+		<string>goindigo</string>
+		<string>zoomus</string>
+		<string>msteams</string>
+		<string>webex</string>
+		<string>comgooglemaps</string>
+		<string>uber</string>
+		<string>olacabs</string>
+		<string>whatsapp</string>
+	</array>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
 	<key>UIApplicationSceneManifest</key>

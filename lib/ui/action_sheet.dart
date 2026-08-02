@@ -1,25 +1,58 @@
 /// Insight → action bridge for the UI.
 ///
-/// Tapping any insight row opens a native action sheet listing what can be
-/// done with it (Track package, Pay via UPI, Join on Meet, Open email...).
-/// A single action skips the sheet and launches straight away — no ceremony
-/// when there's no choice to make.
+/// Tapping an insight opens a sheet of what can be done with it. Each row
+/// says where it will land — "Track package · Delhivery" when the app is
+/// installed, "in NoMail" when it will open in the in-app browser — because
+/// a tap that leaves the app unexpectedly is the thing people dislike most
+/// about deep links.
 library;
 
 import 'package:flutter/cupertino.dart';
 
 import '../core/action_launcher.dart';
+import '../core/brand_icons.dart';
+import '../core/installed_apps.dart';
+import '../core/palette.dart';
 import '../domain/actions.dart';
+import '../domain/deep_links.dart';
+import '../domain/link_feedback.dart';
+
+/// Shared across the app so the ~43 scheme probes happen once per session.
+final InstalledApps installedApps = InstalledApps();
 
 Future<void> showInsightActions(
   BuildContext context, {
   required String title,
   String? message,
   required List<InsightAction> actions,
+  String? insightId,
+  String? knowledgeTypeId,
+  Future<void> Function(LinkFeedback)? onFeedback,
 }) async {
   if (actions.isEmpty) return;
+
+  // Never make the user wait on ~43 scheme probes to see a sheet. The sweep
+  // is warmed at app start; if it somehow hasn't finished, fall back to
+  // "nothing installed", which only ever routes to the web — safe, and
+  // corrected by the time of the next tap.
+  final installed = installedApps.isReady
+      ? installedApps.known
+      : await installedApps
+          .detect()
+          .timeout(const Duration(milliseconds: 250), onTimeout: () => const {});
+  if (!context.mounted) return;
+
+  final plans = {
+    for (final action in actions) action: planFor(action, installed),
+  };
+
   if (actions.length == 1) {
-    await _launchWithFallback(actions.single, actions);
+    await _launchWithFallback(
+      context, actions.single, actions, plans,
+      insightId: insightId,
+      knowledgeTypeId: knowledgeTypeId,
+      onFeedback: onFeedback,
+    );
     return;
   }
 
@@ -33,9 +66,14 @@ Future<void> showInsightActions(
           CupertinoActionSheetAction(
             onPressed: () {
               Navigator.pop(sheetContext);
-              _launchWithFallback(action, actions);
+              _launchWithFallback(
+                context, action, actions, plans,
+                insightId: insightId,
+                knowledgeTypeId: knowledgeTypeId,
+                onFeedback: onFeedback,
+              );
             },
-            child: Text(action.label),
+            child: _ActionRow(action: action, plan: plans[action]),
           ),
       ],
       cancelButton: CupertinoActionSheetAction(
@@ -47,15 +85,78 @@ Future<void> showInsightActions(
   );
 }
 
+/// One sheet row: the action, and — when we actually detected the app — its
+/// brand mark and name, so the destination is visible before the tap.
+///
+/// Naming a destination we haven't confirmed would be a promise we can't
+/// keep: iOS gives no way to know whether an app claims an https link, so
+/// outside [LinkOpenMode.nativeApp] the honest row is just the label. That
+/// also avoids reading "Join on Meet · Google Meet".
+class _ActionRow extends StatelessWidget {
+  final InsightAction action;
+  final LinkPlan? plan;
+
+  const _ActionRow({required this.action, this.plan});
+
+  @override
+  Widget build(BuildContext context) {
+    final native = plan?.mode == LinkOpenMode.nativeApp;
+    if (!native) return Text(action.label);
+
+    final destination = plan!.destination;
+    // Simple Icons omits many trademarks (Delhivery, Flipkart…); a generic
+    // app mark is better than a wrong logo.
+    final glyph = BrandIcons.forText([destination, plan!.appKey]) ??
+        CupertinoIcons.app_badge;
+
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Flexible(child: Text(action.label, overflow: TextOverflow.ellipsis)),
+        const SizedBox(width: 8),
+        Icon(glyph, size: 15, color: Palette.secondaryLabel(context)),
+        const SizedBox(width: 5),
+        Flexible(
+          child: Text(
+            destination,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              fontSize: 14,
+              color: Palette.secondaryLabel(context),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
 /// Nothing on the device could handle the deep link (a upi:// intent with no
-/// UPI app, a zoom link with no Zoom)? Fall back to the insight's own email —
-/// the source of truth, and a URL that always opens. A tap must never end in
-/// silence.
+/// UPI app)? Fall back to the insight's own email — the source of truth, and
+/// a URL that always opens. A tap must never end in silence.
 Future<void> _launchWithFallback(
+  BuildContext context,
   InsightAction action,
   List<InsightAction> all,
-) async {
-  if (await openAction(action)) return;
+  Map<InsightAction, LinkPlan> plans, {
+  String? insightId,
+  String? knowledgeTypeId,
+  Future<void> Function(LinkFeedback)? onFeedback,
+}) async {
+  final plan = plans[action];
+  final opened = plan == null
+      ? await openAction(action)
+      : await openPlanned(
+          plan,
+          action: action,
+          context: context,
+          insightId: insightId,
+          knowledgeTypeId: knowledgeTypeId,
+          onFeedback: onFeedback,
+        );
+  if (opened) return;
+
   if (action.kind == ActionKind.openEmail) return; // already the fallback
   for (final candidate in all) {
     if (candidate.kind == ActionKind.openEmail) {

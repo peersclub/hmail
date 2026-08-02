@@ -31,6 +31,9 @@ void main() {
     await tester.ensureVisible(finder);
     await tester.pumpAndSettle();
     await tester.tap(finder);
+    // The sheet now waits (briefly) on the installed-app sweep, so pump past
+    // that timeout before settling.
+    await tester.pump(const Duration(milliseconds: 400));
     await tester.pumpAndSettle();
   }
 
