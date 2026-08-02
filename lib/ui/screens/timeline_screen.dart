@@ -1,8 +1,11 @@
 import 'package:flutter/cupertino.dart';
+import 'package:flutter/material.dart'
+    show ReorderableListView, DefaultMaterialLocalizations;
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
 import '../../core/palette.dart';
+import '../../data/store/timeline_order_store.dart';
 import '../../domain/insight.dart';
 import '../../domain/insight_mapper.dart';
 import '../../state/app_controller.dart';
@@ -10,8 +13,10 @@ import '../glass/glass.dart';
 import '../insight_card.dart';
 
 /// Timeline — one filterable feed of every insight domain. Replaces the old
-/// Packages and Reads tabs: instead of a tab per category, a chip row filters
-/// a single ranked stream. Adding a new insight domain surfaces here for free.
+/// Packages and Reads tabs. The chip row shows a count per domain, is
+/// drag-reorderable (long-press a chip and drag), and its order also drives
+/// the section order in the "All" feed. Adding a new insight domain surfaces
+/// here for free.
 class TimelineScreen extends StatefulWidget {
   const TimelineScreen({super.key});
 
@@ -20,8 +25,50 @@ class TimelineScreen extends StatefulWidget {
 }
 
 class _TimelineScreenState extends State<TimelineScreen> {
-  /// The active domain filter; null means "All".
+  final _orderStore = TimelineOrderStore();
+
+  /// Active domain filter; null = "All".
   InsightDomain? _filter;
+
+  /// User's saved chip order, by domain name. Present-but-unsaved domains
+  /// append after these.
+  List<String> _savedOrder = const [];
+  bool _loadedOrder = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _orderStore.load().then((order) {
+      if (!mounted) return;
+      setState(() {
+        _savedOrder = order;
+        _loadedOrder = true;
+      });
+    });
+  }
+
+  /// Present domains arranged by the user's saved order, with any new domains
+  /// appended in their natural (enum) order.
+  List<InsightDomain> _orderedDomains(List<InsightDomain> present) {
+    final byName = {for (final d in present) d.name: d};
+    final ordered = <InsightDomain>[];
+    for (final name in _savedOrder) {
+      final d = byName.remove(name);
+      if (d != null) ordered.add(d);
+    }
+    for (final d in present) {
+      if (byName.containsKey(d.name)) ordered.add(d);
+    }
+    return ordered;
+  }
+
+  void _onReorder(List<InsightDomain> current, int oldIndex, int newIndex) {
+    final next = [...current];
+    next.insert(newIndex, next.removeAt(oldIndex));
+    HapticFeedback.mediumImpact();
+    setState(() => _savedOrder = next.map((d) => d.name).toList());
+    _orderStore.save(_savedOrder);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -30,10 +77,15 @@ class _TimelineScreenState extends State<TimelineScreen> {
     final syncing = app.phase == AppPhase.syncing;
 
     final all = snapshotToInsights(snapshot);
-    final domains = presentDomains(all);
+    final present = presentDomains(all);
+    final domains = _loadedOrder ? _orderedDomains(present) : present;
 
-    // A filter can go stale if the underlying data changes (a domain empties
-    // out on the next sync). Fall back to All rather than showing nothing.
+    final counts = <InsightDomain, int>{};
+    for (final i in all) {
+      counts[i.domain] = (counts[i.domain] ?? 0) + 1;
+    }
+
+    // A filter can go stale if its domain empties out on the next sync.
     final activeFilter =
         (_filter != null && domains.contains(_filter)) ? _filter : null;
 
@@ -60,12 +112,17 @@ class _TimelineScreenState extends State<TimelineScreen> {
                 if (domains.isNotEmpty)
                   _FilterChips(
                     domains: domains,
+                    counts: counts,
+                    total: all.length,
                     selected: activeFilter,
                     onSelect: (domain) {
                       HapticFeedback.selectionClick();
                       setState(() => _filter = domain);
                     },
+                    onReorder: (o, n) => _onReorder(domains, o, n),
                   ),
+                // Breathing room so the first card never crowds the chips.
+                const SizedBox(height: 6),
                 if (all.isEmpty)
                   GlassEmptyState(
                     icon: CupertinoIcons.tray,
@@ -84,7 +141,10 @@ class _TimelineScreenState extends State<TimelineScreen> {
                       ],
                     )
                 else
-                  _DomainSection(insights: shown),
+                  Padding(
+                    padding: const EdgeInsets.only(top: 20),
+                    child: _DomainSection(insights: shown),
+                  ),
                 const SizedBox(height: kDockClearance),
               ],
             ),
@@ -113,39 +173,85 @@ class _DomainSection extends StatelessWidget {
   }
 }
 
-/// Horizontal pill row: "All" plus one chip per present domain. Selected chip
-/// fills with the ink accent; the rest are quiet glass.
+/// Horizontal chip row: a fixed "All" chip plus one draggable chip per domain,
+/// each showing its count. Long-press a domain chip to drag it into a new
+/// position; tap to filter.
 class _FilterChips extends StatelessWidget {
   final List<InsightDomain> domains;
+  final Map<InsightDomain, int> counts;
+  final int total;
   final InsightDomain? selected;
   final ValueChanged<InsightDomain?> onSelect;
+  final void Function(int oldIndex, int newIndex) onReorder;
 
   const _FilterChips({
     required this.domains,
+    required this.counts,
+    required this.total,
     required this.selected,
     required this.onSelect,
+    required this.onReorder,
   });
 
   @override
   Widget build(BuildContext context) {
-    return SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
-      padding: const EdgeInsets.symmetric(horizontal: 20),
+    return SizedBox(
+      height: 46,
       child: Row(
         children: [
+          const SizedBox(width: 20),
           _Chip(
             label: 'All',
+            count: total,
             active: selected == null,
             onTap: () => onSelect(null),
           ),
-          for (final domain in domains) ...[
-            const SizedBox(width: 8),
-            _Chip(
-              label: domain.label,
-              active: selected == domain,
-              onTap: () => onSelect(domain),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Localizations.override(
+              context: context,
+              delegates: const [DefaultMaterialLocalizations.delegate],
+              child: ReorderableListView.builder(
+              scrollDirection: Axis.horizontal,
+              buildDefaultDragHandles: false,
+              padding: const EdgeInsets.only(right: 20),
+              onReorderItem: onReorder,
+              proxyDecorator: (child, index, animation) => Transform.scale(
+                scale: 1.06,
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(100),
+                    boxShadow: [
+                      BoxShadow(
+                        color: const Color(0x33000000),
+                        blurRadius: 14,
+                        offset: const Offset(0, 4),
+                      ),
+                    ],
+                  ),
+                  child: child,
+                ),
+              ),
+              itemCount: domains.length,
+              itemBuilder: (context, i) {
+                final domain = domains[i];
+                return Padding(
+                  key: ValueKey(domain.name),
+                  padding: const EdgeInsets.only(right: 8),
+                  child: ReorderableDelayedDragStartListener(
+                    index: i,
+                    child: _Chip(
+                      label: domain.label,
+                      count: counts[domain] ?? 0,
+                      active: selected == domain,
+                      onTap: () => onSelect(domain),
+                    ),
+                  ),
+                );
+              },
+              ),
             ),
-          ],
+          ),
         ],
       ),
     );
@@ -154,33 +260,69 @@ class _FilterChips extends StatelessWidget {
 
 class _Chip extends StatelessWidget {
   final String label;
+  final int count;
   final bool active;
   final VoidCallback onTap;
 
-  const _Chip({required this.label, required this.active, required this.onTap});
+  const _Chip({
+    required this.label,
+    required this.count,
+    required this.active,
+    required this.onTap,
+  });
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTap: onTap,
-      child: Container(
-        height: 34,
-        alignment: Alignment.center,
-        padding: const EdgeInsets.symmetric(horizontal: 14),
-        decoration: BoxDecoration(
-          color: active ? Palette.accent(context) : Palette.badgeFill(context),
-          borderRadius: BorderRadius.circular(100),
-        ),
-        child: Text(
-          label,
-          style: TextStyle(
-            fontSize: 14,
-            fontWeight: FontWeight.w600,
-            letterSpacing: -0.2,
-            color: active
-                ? Palette.onAccent(context)
-                : Palette.secondaryLabel(context),
+    final labelColor = active
+        ? Palette.onAccent(context)
+        : Palette.label(context);
+    // Restored: no alpha stacked on an already-reduced secondary gray.
+    final countColor = active
+        ? Palette.onAccent(context).withValues(alpha: 0.8)
+        : Palette.secondaryLabel(context);
+    return Semantics(
+      button: true,
+      selected: active,
+      label: '$label, $count',
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: onTap,
+        // 44pt hit target around the 34pt visual pill.
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 5),
+          child: Container(
+            height: 34,
+            alignment: Alignment.center,
+            padding: const EdgeInsets.symmetric(horizontal: 14),
+            decoration: BoxDecoration(
+              color:
+                  active ? Palette.accent(context) : Palette.badgeFill(context),
+              borderRadius: BorderRadius.circular(100),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  label,
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                    letterSpacing: -0.2,
+                    color: labelColor,
+                  ),
+                ),
+                const SizedBox(width: 6),
+                Text(
+                  '· $count',
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                    color: countColor,
+                    fontFeatures: const [FontFeature.tabularFigures()],
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       ),
