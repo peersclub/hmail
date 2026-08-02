@@ -85,13 +85,35 @@ Future<void> showInsightActions(
   );
 }
 
-/// One sheet row: the action, and — when we actually detected the app — its
-/// brand mark and name, so the destination is visible before the tap.
+/// What a row promises will happen on tap.
 ///
-/// Naming a destination we haven't confirmed would be a promise we can't
-/// keep: iOS gives no way to know whether an app claims an https link, so
-/// outside [LinkOpenMode.nativeApp] the honest row is just the label. That
-/// also avoids reading "Join on Meet · Google Meet".
+/// Three outcomes, three markers, always in the same place: the app's own
+/// mark and name when we detected it, a globe for "stays in NoMail", and an
+/// out-arrow for "leaves for Safari". A tap that leaves the app unexpectedly
+/// is the thing people dislike most about deep links, and the cure is simply
+/// saying so beforehand.
+({IconData icon, String label}) destinationHint(LinkPlan plan) =>
+    switch (plan.mode) {
+      // Simple Icons omits many trademarks (Delhivery, Flipkart…); a generic
+      // app mark is better than a wrong logo.
+      LinkOpenMode.nativeApp => (
+          icon: BrandIcons.forText([plan.destination, plan.appKey]) ??
+              CupertinoIcons.app_badge,
+          label: plan.destination,
+        ),
+      LinkOpenMode.inAppWebView => (
+          icon: CupertinoIcons.globe,
+          label: 'in NoMail',
+        ),
+      // `destination` here is either a named handler ("your UPI app") or the
+      // browser; either way the arrow says the app is being left.
+      LinkOpenMode.systemHandoff => (
+          icon: CupertinoIcons.arrow_up_right_square,
+          label: plan.destination,
+        ),
+    };
+
+/// One sheet row: the action, then its destination hint in muted text.
 class _ActionRow extends StatelessWidget {
   final InsightAction action;
   final LinkPlan? plan;
@@ -100,14 +122,10 @@ class _ActionRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final native = plan?.mode == LinkOpenMode.nativeApp;
-    if (!native) return Text(action.label);
-
-    final destination = plan!.destination;
-    // Simple Icons omits many trademarks (Delhivery, Flipkart…); a generic
-    // app mark is better than a wrong logo.
-    final glyph = BrandIcons.forText([destination, plan!.appKey]) ??
-        CupertinoIcons.app_badge;
+    final currentPlan = plan;
+    if (currentPlan == null) return Text(action.label);
+    final hint = destinationHint(currentPlan);
+    final muted = Palette.secondaryLabel(context);
 
     return Row(
       mainAxisAlignment: MainAxisAlignment.center,
@@ -115,16 +133,13 @@ class _ActionRow extends StatelessWidget {
       children: [
         Flexible(child: Text(action.label, overflow: TextOverflow.ellipsis)),
         const SizedBox(width: 8),
-        Icon(glyph, size: 15, color: Palette.secondaryLabel(context)),
-        const SizedBox(width: 5),
+        Icon(hint.icon, size: 14, color: muted),
+        const SizedBox(width: 4),
         Flexible(
           child: Text(
-            destination,
+            hint.label,
             overflow: TextOverflow.ellipsis,
-            style: TextStyle(
-              fontSize: 14,
-              color: Palette.secondaryLabel(context),
-            ),
+            style: TextStyle(fontSize: 13, color: muted),
           ),
         ),
       ],

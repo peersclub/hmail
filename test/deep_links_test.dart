@@ -2,9 +2,11 @@
 /// obvious to a user, so every routing rule is pinned here.
 library;
 
+import 'package:flutter/cupertino.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hmail/domain/actions.dart';
 import 'package:hmail/domain/deep_links.dart';
+import 'package:hmail/ui/action_sheet.dart';
 
 InsightAction action(String url, ActionKind kind, {String label = 'Go'}) =>
     InsightAction(label: label, uri: Uri.parse(url), kind: kind);
@@ -146,5 +148,56 @@ void main() {
       expect(plan.uri.host, 'example.com');
       expect(plan.destination, isNotEmpty);
     }
+  });
+
+  group('destination hint tells the user what happens next', () {
+    test('a detected app shows its own name', () {
+      final hint = destinationHint(planFor(
+        action('https://www.delhivery.com/track/1', ActionKind.track),
+        {'delhivery'},
+      ));
+      expect(hint.label, 'Delhivery');
+    });
+
+    test('the WebView case says it stays in NoMail', () {
+      final hint = destinationHint(planFor(
+        action('https://t.17track.net/en#nums=X', ActionKind.track),
+        const {},
+      ));
+      expect(hint.label, 'in NoMail');
+      expect(hint.icon, CupertinoIcons.globe);
+    });
+
+    test('leaving the app shows the out-arrow', () {
+      final hint = destinationHint(planFor(
+        action('https://mail.google.com/mail/u/0/#all/x', ActionKind.openEmail),
+        const {},
+      ));
+      expect(hint.icon, CupertinoIcons.arrow_up_right_square);
+    });
+
+    test('a upi intent names the handler rather than a browser', () {
+      final hint = destinationHint(planFor(
+        action('upi://pay?pa=x@y&am=1', ActionKind.pay),
+        const {},
+      ));
+      expect(hint.label, 'your UPI app');
+    });
+
+    test('every mode produces a non-empty label and a distinct icon', () {
+      final icons = <IconData>{};
+      for (final plan in [
+        planFor(action('https://www.delhivery.com/t/1', ActionKind.track),
+            {'delhivery'}),
+        planFor(action('https://t.17track.net/x', ActionKind.track), const {}),
+        planFor(action('https://mail.google.com/x', ActionKind.openEmail),
+            const {}),
+      ]) {
+        final hint = destinationHint(plan);
+        expect(hint.label, isNotEmpty);
+        icons.add(hint.icon);
+      }
+      expect(icons, hasLength(3), reason: 'the three outcomes must look different');
+    });
   });
 }
