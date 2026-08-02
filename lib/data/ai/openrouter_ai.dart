@@ -39,6 +39,7 @@ class OpenRouterAi implements InsightAi {
   Future<AiResult> analyze({
     required InsightSnapshot extracted,
     required List<EmailMeta> unclaimed,
+    List<EmailMeta> sources = const [],
   }) async {
     final key = _apiKey;
     if (key == null) return AiResult.empty;
@@ -49,25 +50,50 @@ class OpenRouterAi implements InsightAi {
             '- id=${e.id} | from=${e.from} | subject=${e.subject} | ${e.snippet}')
         .join('\n');
 
-    final prompt = '''
-You power the daily brief of an email-insights app. Below is structured data
-extracted from the user's Gmail, plus unclassified recent emails.
+    // The audit needs each insight's originating email — a name or a
+    // misclassification can only be judged against the real subject line.
+    final sourceBlock = sources
+        .take(60)
+        .map((e) => '- id=${e.id} | from=${e.from} | subject=${e.subject}')
+        .join('\n');
 
-EXTRACTED (already shown in dashboards — do not repeat verbatim):
+    final prompt = '''
+You power the daily brief of an email-insights app. Rule-based parsers
+extracted the structured data below from the user's Gmail. The parsers favour
+recall, so some entries are wrong or badly named — your first job is to clean
+them up.
+
+EXTRACTED INSIGHTS:
 ${jsonEncode(extracted.toJson())}
+
+SOURCE EMAILS for those insights (match on sourceEmailId):
+$sourceBlock
 
 UNCLASSIFIED EMAILS:
 $unclaimedBlock
 
 Tasks:
-1. Write a 1-sentence headline and up to 4 short bullets for "Today" — only
+1. AUDIT every extracted insight against its source email.
+   - "reject": sourceEmailId of anything that is not genuinely what it claims
+     to be. Reject dev-tool/SaaS notifications posing as parcels ("deploy
+     shipped", a PR touching package.json), marketing posing as bills,
+     order-status emails with no real amount, and duplicates of the same
+     real-world thing.
+   - "rename": sourceEmailId → correct human brand name, when the current
+     name is a mangled domain fragment ("Nct" → "Flipkart", "Alerts" →
+     "HDFC Bank") or a raw domain. Use the name a person would say. Only
+     include entries you are actually changing.
+2. Write a 1-sentence headline and up to 4 short bullets for "Today" — only
    genuinely useful, forward-looking facts (due dates, renewals, arrivals,
-   deadlines). No filler, no restating counts.
-2. From UNCLASSIFIED only, pick at most 5 emails a busy person must not miss
+   deadlines), and only about insights you did NOT reject. No filler, no
+   restating counts.
+3. From UNCLASSIFIED only, pick at most 5 emails a busy person must not miss
    (deadlines, security alerts, personal requests). Ignore marketing.
 
 Return ONLY JSON:
-{"headline": "...", "bullets": ["..."], "attention": [{"id": "...", "title": "...", "reason": "..."}]}
+{"reject": ["emailId"], "rename": {"emailId": "Brand Name"},
+ "headline": "...", "bullets": ["..."],
+ "attention": [{"id": "...", "title": "...", "reason": "..."}]}
 ''';
 
     try {
@@ -111,6 +137,19 @@ Return ONLY JSON:
           generatedAt: DateTime.now(),
         ),
         attention: attention,
+        verdicts: InsightVerdicts(
+          rejected: {
+            for (final id in (json['reject'] ?? []) as List)
+              if (id is String && id.isNotEmpty) id,
+          },
+          renamed: {
+            for (final entry
+                in ((json['rename'] ?? {}) as Map<String, dynamic>).entries)
+              if (entry.value is String &&
+                  (entry.value as String).trim().isNotEmpty)
+                entry.key: (entry.value as String).trim(),
+          },
+        ),
       );
     } catch (_) {
       return AiResult.empty;

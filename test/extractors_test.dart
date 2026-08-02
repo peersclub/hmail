@@ -233,6 +233,8 @@ void main() {
     });
   });
 
+  feedTests();
+
   group('runExtractors', () {
     test('routes each email to exactly one bucket', () {
       final result = runExtractors([
@@ -261,6 +263,65 @@ void main() {
       expect(result.bills, hasLength(1));
       expect(result.deliveries, hasLength(1));
       expect(result.unclaimed.map((e) => e.id), ['d']);
+    });
+  });
+}
+void feedTests() {
+  group('extractFeed', () {
+    EmailMeta e({String from = '', String subject = '', String body = ''}) =>
+        EmailMeta(
+            id: 'f',
+            from: from,
+            subject: subject,
+            snippet: '',
+            body: body,
+            date: DateTime(2026, 8, 1));
+
+    test('The Ken article becomes an article feed item', () {
+      final item = extractFeed(e(
+        from: 'The Ken <newsletters@theken.com>',
+        subject: 'The quick-commerce shakeout',
+      ));
+      expect(item, isNotNull);
+      expect(item!.kind, FeedKind.article);
+      expect(item.source, 'The Ken');
+    });
+
+    test('YouTube upload becomes a video and strips the "uploaded:" prefix', () {
+      final item = extractFeed(e(
+        from: 'YouTube <noreply@youtube.com>',
+        subject: 'Veritasium uploaded: The riddle',
+      ));
+      expect(item!.kind, FeedKind.video);
+      expect(item.title, 'The riddle');
+    });
+
+    test('Substack post is content, but a Substack receipt stays money', () {
+      final post = extractFeed(e(
+        from: 'Lenny <lenny@substack.com>',
+        subject: 'New post: discovery',
+      ));
+      expect(post, isNotNull);
+      // A receipt routes to subscription, not feed, via runExtractors ordering.
+      final routed = runExtractors([
+        e(
+          from: 'Substack <receipts@substack.com>',
+          subject: 'Your subscription receipt',
+          body: 'Payment successful: \$8/month subscription.',
+        ),
+      ]);
+      expect(routed.subscriptions, isNotEmpty);
+      expect(routed.feed, isEmpty);
+    });
+
+    test('GitHub "we shipped" notification is never a read', () {
+      expect(
+        extractFeed(e(
+          from: 'GitHub <noreply@github.com>',
+          subject: 'New release published',
+        )),
+        isNull,
+      );
     });
   });
 }

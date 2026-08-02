@@ -4,16 +4,23 @@ import 'package:flutter/foundation.dart';
 
 import '../core/action_launcher.dart';
 import '../core/notification_service.dart';
+import '../data/ai/ai_status.dart';
 import '../data/ai/insight_ai.dart';
+import '../data/ai/knowledge_learner.dart';
 import '../data/ai/openrouter_ai.dart';
 import '../data/mail/gmail_auth.dart';
 import '../data/mail/gmail_source.dart';
 import '../data/mail/mail_source.dart';
 import '../data/store/insight_store.dart';
+import '../data/store/knowledge_store.dart';
+import '../data/store/settings_store.dart';
 import '../data/sync/sync_engine.dart';
 import '../domain/actions.dart';
 import '../domain/backfill_stats.dart';
+import '../domain/knowledge.dart';
 import '../domain/models.dart';
+import '../domain/scan_settings.dart';
+import '../domain/sync_report.dart';
 
 enum AppPhase { booting, signedOut, syncing, ready }
 
@@ -23,16 +30,28 @@ class AppController extends ChangeNotifier {
   final InsightStore _store;
   final InsightAi _ai;
   final NotificationService _notifications;
+  final SettingsStore _settingsStore;
+  final KnowledgeStore _knowledgeStore;
+  final KnowledgeLearner _learner;
+  final AiStatusService aiStatus;
 
   AppController({
     GmailAuth? auth,
     InsightStore? store,
     InsightAi? ai,
     NotificationService? notifications,
+    SettingsStore? settingsStore,
+    AiStatusService? aiStatusService,
+    KnowledgeStore? knowledgeStore,
+    KnowledgeLearner? learner,
   })  : _auth = auth ?? GmailAuth(),
         _store = store ?? InsightStore(),
         _ai = ai ?? OpenRouterAi(),
-        _notifications = notifications ?? NotificationService();
+        _notifications = notifications ?? NotificationService(),
+        _settingsStore = settingsStore ?? SettingsStore(),
+        _knowledgeStore = knowledgeStore ?? KnowledgeStore(),
+        _learner = learner ?? KnowledgeLearner(),
+        aiStatus = aiStatusService ?? AiStatusService();
 
   AppPhase _phase = AppPhase.booting;
   InsightSnapshot _snapshot = const InsightSnapshot();
@@ -44,6 +63,21 @@ class AppController extends ChangeNotifier {
   // cached snapshot doesn't count — that user has already seen their data.
   bool _hadInsights = false;
   bool _showMoneyShot = false;
+
+  ScanSettings _settings = const ScanSettings();
+  SyncReport _lastReport = SyncReport.empty();
+  SyncStage _stage = SyncStage.idle;
+
+  Playbook _playbook = Playbook.empty;
+
+  /// Everything the app has taught itself, newest recipes last.
+  Playbook get playbook => _playbook;
+
+  ScanSettings get settings => _settings;
+  SyncReport get lastReport => _lastReport;
+
+  /// What the pipeline is doing right now — drives the live Settings row.
+  SyncStage get stage => _stage;
 
   AppPhase get phase => _phase;
   InsightSnapshot get snapshot => _snapshot;
@@ -64,12 +98,43 @@ class AppController extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Switching a recipe off keeps it in the playbook, so the learner won't
+  /// pay to rediscover something the user rejected.
+  Future<void> setKnowledgeEnabled(String id, bool enabled) async {
+    _playbook = _playbook.setEnabled(id, enabled);
+    notifyListeners();
+    await _knowledgeStore.save(_playbook);
+  }
+
+  Future<void> forgetKnowledge(String id) async {
+    _playbook = _playbook.remove(id);
+    notifyListeners();
+    await _knowledgeStore.save(_playbook);
+  }
+
+  /// Persists [next] and re-schedules the brief if its hour moved. Scan-scope
+  /// changes only take effect on the following sync — silently re-scanning
+  /// on every toggle would burn the user's API quota.
+  Future<void> updateSettings(ScanSettings next) async {
+    final previous = _settings;
+    _settings = next;
+    notifyListeners();
+    await _settingsStore.save(next);
+
+    final brief = _snapshot.brief;
+    if (brief != null && next.briefHour != previous.briefHour) {
+      await _notifications.scheduleDailyBrief(brief, hour: next.briefHour);
+    }
+  }
+
   SyncEngine _engine(MailSource source, {InsightAi? ai}) =>
       SyncEngine(source: source, ai: ai ?? _ai, store: _store);
 
   /// App start: render the cached snapshot instantly, resume the Google
   /// session silently, then refresh in the background.
   Future<void> init() async {
+    _settings = await _settingsStore.load();
+    _playbook = await _knowledgeStore.load();
     final cached = await _store.load();
     if (cached != null && !cached.isEmpty) _snapshot = cached;
     _hadInsights = !_snapshot.isEmpty;
@@ -136,13 +201,31 @@ class AppController extends ChangeNotifier {
     notifyListeners();
 
     try {
-      _snapshot = await _engine(GmailSource(api)).run(previous: _snapshot);
+      final result =
+          await _engine(GmailSource(api, settings: _settings)).runReported(
+        previous: _snapshot,
+        settings: _settings,
+        playbook: _playbook,
+        learner: _learner,
+        onStage: (stage) {
+          _stage = stage;
+          notifyListeners();
+        },
+      );
+      _snapshot = result.snapshot;
+      _lastReport = result.report;
+      if (result.playbook.length != _playbook.length) {
+        _playbook = result.playbook;
+        await _knowledgeStore.save(_playbook);
+      }
       _error = null;
       _afterSnapshotUpdate();
     } catch (e) {
       _error = 'Sync failed: $e';
+      _lastReport = _lastReport.copyWith(stage: SyncStage.failed);
     }
 
+    _stage = _error == null ? SyncStage.done : SyncStage.failed;
     _phase = AppPhase.ready;
     notifyListeners();
   }
@@ -157,7 +240,7 @@ class AppController extends ChangeNotifier {
     final brief = _snapshot.brief;
     if (brief != null) {
       // Fire-and-forget: scheduling silently no-ops without permission.
-      _notifications.scheduleDailyBrief(brief);
+      _notifications.scheduleDailyBrief(brief, hour: _settings.briefHour);
     }
   }
 
@@ -172,6 +255,17 @@ class AppController extends ChangeNotifier {
     openAction(
       InsightAction(label: '', uri: uri, kind: ActionKind.openLink),
     );
+  }
+
+  /// Throws away every cached insight and re-extracts from Gmail. The normal
+  /// sync merges onto what's already there, so this is the escape hatch when
+  /// the stored data itself is wrong.
+  Future<void> rescan() async {
+    await _store.clear();
+    _snapshot = const InsightSnapshot();
+    _hadInsights = false;
+    notifyListeners();
+    await sync();
   }
 
   Future<void> signOut() async {

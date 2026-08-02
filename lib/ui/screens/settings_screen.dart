@@ -1,10 +1,18 @@
+import 'dart:convert';
+
 import 'package:flutter/cupertino.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
 import '../../core/palette.dart';
+import '../../domain/sync_report.dart';
 import '../../state/app_controller.dart';
 import '../format.dart';
 import '../glass/glass.dart';
+import 'ai_screen.dart';
+import 'knowledge_screen.dart';
+import 'processing_screen.dart';
+import 'scan_screen.dart';
 
 /// Settings tab. Rendered inside the app shell (backdrop + dock supplied),
 /// so this is scroll content only.
@@ -32,9 +40,10 @@ class SettingsScreen extends StatelessWidget {
           ],
         ),
         GlassSection(
+          label: 'Data',
           children: [
             if (syncing)
-              _syncingRow(context, syncSubtitle)
+              _syncingRow(context, app.stage.label)
             else
               GlassRow(
                 icon: CupertinoIcons.arrow_2_circlepath,
@@ -43,12 +52,71 @@ class SettingsScreen extends StatelessWidget {
                 onTap: () => context.read<AppController>().sync(),
               ),
             GlassRow(
-              icon: CupertinoIcons.sparkles,
-              title: 'AI Brief',
-              subtitle: app.aiLabel == 'off'
-                  ? 'Off — add OPENROUTER_API_KEY to enable'
-                  : app.aiLabel,
+              icon: CupertinoIcons.slider_horizontal_3,
+              title: 'Scanning',
+              subtitle: app.settings.describeScope,
+              subtitleMaxLines: 2,
+              onTap: () => _push(context, const ScanScreen()),
             ),
+            GlassRow(
+              icon: CupertinoIcons.list_bullet_below_rectangle,
+              title: 'Processing',
+              subtitle: app.lastReport.headline,
+              subtitleMaxLines: 2,
+              onTap: () => _push(context, const ProcessingScreen()),
+            ),
+          ],
+        ),
+        GlassSection(
+          label: 'Intelligence',
+          children: [
+            GlassRow(
+              icon: CupertinoIcons.sparkles,
+              title: 'AI',
+              subtitle: !app.settings.aiEnabled
+                  ? 'Off — rules only'
+                  : (app.aiLabel == 'off'
+                      ? 'No key — add OPENROUTER_API_KEY'
+                      : app.aiLabel),
+              subtitleMaxLines: 2,
+              onTap: () => _push(context, const AiScreen()),
+            ),
+            GlassRow(
+              icon: CupertinoIcons.lightbulb,
+              title: 'Knowledge',
+              subtitle: app.playbook.isEmpty
+                  ? 'Nothing learned yet'
+                  : '${app.playbook.length} thing'
+                      '${app.playbook.length == 1 ? '' : 's'} NoMail taught itself',
+              subtitleMaxLines: 2,
+              onTap: () => _push(context, const KnowledgeScreen()),
+            ),
+            GlassRow(
+              icon: CupertinoIcons.bell,
+              title: 'Daily Brief',
+              subtitle: 'Every day at ${_hourLabel(app.settings.briefHour)}',
+              trailingCaption: 'Change',
+              trailingCaptionColor: Palette.accent(context),
+              onTap: () => _pickBriefHour(context, app),
+            ),
+          ],
+        ),
+        GlassSection(
+          label: 'Your data',
+          children: [
+            GlassRow(
+              icon: CupertinoIcons.square_arrow_up,
+              title: 'Export Insights',
+              subtitle: 'Copy everything NoMail knows as JSON',
+              onTap: () => _export(context, app),
+            ),
+            if (!syncing)
+              GlassRow(
+                icon: CupertinoIcons.wand_stars,
+                title: 'Rescan Everything',
+                subtitle: 'Clear stored insights and re-extract with AI',
+                onTap: () => _confirmRescan(context),
+              ),
           ],
         ),
         const Footnote(
@@ -82,6 +150,96 @@ class SettingsScreen extends StatelessWidget {
     );
   }
 
+  static void _push(BuildContext context, Widget screen) {
+    Navigator.of(context, rootNavigator: true)
+        .push(CupertinoPageRoute<void>(builder: (_) => screen));
+  }
+
+  static String _hourLabel(int hour) {
+    final display = hour % 12 == 0 ? 12 : hour % 12;
+    return '$display${hour < 12 ? 'am' : 'pm'}';
+  }
+
+  /// Export puts the user's insights on the clipboard as JSON — the cheapest
+  /// honest answer to "is my data locked in?".
+  Future<void> _export(BuildContext context, AppController app) async {
+    final payload = const JsonEncoder.withIndent('  ')
+        .convert(app.snapshot.toJson());
+    await Clipboard.setData(ClipboardData(text: payload));
+    if (!context.mounted) return;
+    await showCupertinoDialog<void>(
+      context: context,
+      builder: (dialogContext) => CupertinoAlertDialog(
+        title: const Text('Copied'),
+        content: Text(
+          '${app.snapshot.subscriptions.length + app.snapshot.bills.length + app.snapshot.deliveries.length + app.snapshot.events.length} '
+          'insights copied to the clipboard as JSON.',
+        ),
+        actions: [
+          CupertinoDialogAction(
+            isDefaultAction: true,
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('Done'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _pickBriefHour(BuildContext context, AppController app) async {
+    const hours = [6, 7, 8, 9, 10, 20];
+    final chosen = await showCupertinoModalPopup<int>(
+      context: context,
+      builder: (sheetContext) => CupertinoActionSheet(
+        title: const Text('Daily brief'),
+        message: const Text('When should the summary arrive?'),
+        actions: [
+          for (final hour in hours)
+            CupertinoActionSheetAction(
+              onPressed: () => Navigator.pop(sheetContext, hour),
+              child: Text(_hourLabel(hour)),
+            ),
+        ],
+        cancelButton: CupertinoActionSheetAction(
+          isDefaultAction: true,
+          onPressed: () => Navigator.pop(sheetContext),
+          child: const Text('Cancel'),
+        ),
+      ),
+    );
+    if (chosen != null) {
+      await app.updateSettings(app.settings.copyWith(briefHour: chosen));
+    }
+  }
+
+  /// Rescan discards stored insights, so it asks first — a slow rebuild the
+  /// user didn't expect feels like data loss.
+  Future<void> _confirmRescan(BuildContext context) async {
+    final controller = context.read<AppController>();
+    final confirmed = await showCupertinoModalPopup<bool>(
+      context: context,
+      builder: (sheetContext) => CupertinoActionSheet(
+        title: const Text('Rescan everything?'),
+        message: const Text(
+          'Stored insights are discarded and rebuilt from your mail. '
+          'The AI pass re-checks every result and fixes wrong ones.',
+        ),
+        actions: [
+          CupertinoActionSheetAction(
+            onPressed: () => Navigator.pop(sheetContext, true),
+            child: const Text('Rescan'),
+          ),
+        ],
+        cancelButton: CupertinoActionSheetAction(
+          isDefaultAction: true,
+          onPressed: () => Navigator.pop(sheetContext, false),
+          child: const Text('Cancel'),
+        ),
+      ),
+    );
+    if (confirmed == true) await controller.rescan();
+  }
+
   /// Profile row: GlassRow layout, but the leading badge is an initial
   /// avatar rather than an icon, so it is built by hand.
   Widget _profileRow(BuildContext context, AppController app) {
@@ -92,8 +250,8 @@ class SettingsScreen extends StatelessWidget {
       child: Row(
         children: [
           Container(
-            width: 36,
-            height: 36,
+            width: 38,
+            height: 38,
             decoration: BoxDecoration(
               shape: BoxShape.circle,
               color: Palette.badgeFill(context),
@@ -102,8 +260,8 @@ class SettingsScreen extends StatelessWidget {
               child: Text(
                 initial,
                 style: TextStyle(
-                  fontSize: 15,
-                  fontWeight: FontWeight.w700,
+                  fontSize: 16,
+                  fontWeight: FontWeight.w600,
                   color: Palette.secondaryLabel(context),
                 ),
               ),
@@ -119,9 +277,8 @@ class SettingsScreen extends StatelessWidget {
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w600,
-                    letterSpacing: -0.2,
+                    fontSize: 17,
+                    letterSpacing: -0.4,
                     color: Palette.label(context),
                   ),
                 ),
@@ -131,7 +288,7 @@ class SettingsScreen extends StatelessWidget {
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
-                    fontSize: 13,
+                    fontSize: 15,
                     color: Palette.secondaryLabel(context),
                   ),
                 ),
@@ -161,9 +318,8 @@ class SettingsScreen extends StatelessWidget {
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w600,
-                    letterSpacing: -0.2,
+                    fontSize: 17,
+                    letterSpacing: -0.4,
                     color: Palette.label(context),
                   ),
                 ),
@@ -173,7 +329,7 @@ class SettingsScreen extends StatelessWidget {
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
-                    fontSize: 13,
+                    fontSize: 15,
                     color: Palette.secondaryLabel(context),
                   ),
                 ),

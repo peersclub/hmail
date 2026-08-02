@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:googleapis/gmail/v1.dart';
 
 import '../../domain/models.dart';
+import '../../domain/scan_settings.dart';
 import 'mail_source.dart';
 
 /// Gmail-as-a-backend: targeted queries, not inbox paging.
@@ -11,32 +12,45 @@ import 'mail_source.dart';
 /// has its own Gmail search — the same queries a power user would type.
 class GmailSource implements MailSource {
   final GmailApi api;
+  final ScanSettings settings;
 
-  GmailSource(this.api);
+  GmailSource(this.api, {this.settings = const ScanSettings()});
 
-  static const _queries = <String>[
-    // Subscriptions & receipts — a full year, or annual renewals are invisible
-    // and the first-scan total undersells what's really recurring.
-    'subject:(receipt OR renewal OR subscription OR "payment successful" OR invoice) newer_than:365d',
-    // Bills
-    'subject:(bill OR due OR statement) newer_than:60d',
-    // Deliveries
-    'subject:(shipped OR delivery OR delivered OR dispatched OR "out for delivery" OR "order confirmed") newer_than:30d',
-    // Calendar invites & meetings (braces are Gmail's OR group)
-    '{subject:invitation subject:"updated invitation" subject:"canceled event" subject:meeting filename:ics} newer_than:14d',
-  ];
+  /// Queries for the domains the user left switched on. Bills and deliveries
+  /// keep tight windows regardless of [ScanSettings.historyDays] — a bill
+  /// from last year is history, not a task — while receipts honour it so
+  /// annual renewals surface.
+  static List<String> queriesFor(ScanSettings settings) {
+    final history = settings.historyDays;
+    return [
+      if (settings.scanMoney) ...[
+        'subject:(receipt OR renewal OR subscription OR "payment successful" OR invoice) newer_than:${history}d',
+        'subject:(bill OR due OR statement) newer_than:${_clamp(history, 60)}d',
+      ],
+      if (settings.scanDeliveries)
+        'subject:(shipped OR delivery OR delivered OR dispatched OR "out for delivery" OR "order confirmed") newer_than:${_clamp(history, 30)}d',
+      // Braces are Gmail's OR group.
+      if (settings.scanEvents)
+        '{subject:invitation subject:"updated invitation" subject:"canceled event" subject:meeting filename:ics} newer_than:${_clamp(history, 14)}d',
+      if (settings.scanReads)
+        '{from:substack.com from:youtube.com from:medium.com from:theken.com subject:newsletter subject:"new post" subject:"new episode" subject:uploaded} newer_than:${_clamp(history, 21)}d',
+    ];
+  }
+
+  static int _clamp(int history, int cap) => history < cap ? history : cap;
 
   /// Fetches candidate emails across all insight queries, deduped by id.
   @override
-  Future<List<EmailMeta>> fetchCandidates({int maxPerQuery = 25}) async {
+  Future<List<EmailMeta>> fetchCandidates({int? maxPerQuery}) async {
     final seen = <String>{};
     final results = <EmailMeta>[];
+    final perQuery = maxPerQuery ?? settings.maxEmailsPerQuery;
 
-    for (final query in _queries) {
+    for (final query in queriesFor(settings)) {
       final list = await api.users.messages.list(
         'me',
         q: query,
-        maxResults: maxPerQuery,
+        maxResults: perQuery,
       );
       for (final ref in list.messages ?? const <Message>[]) {
         final id = ref.id;

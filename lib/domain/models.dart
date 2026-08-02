@@ -62,6 +62,17 @@ class Subscription {
   double get monthlyAmount =>
       cadence == Cadence.yearly ? amount / 12.0 : amount;
 
+  Subscription withService(String name) => Subscription(
+        service: name,
+        amount: amount,
+        currency: currency,
+        cadence: cadence,
+        nextRenewal: nextRenewal,
+        lastSeen: lastSeen,
+        sourceEmailId: sourceEmailId,
+        manageUrl: manageUrl,
+      );
+
   String get dedupeKey => service.toLowerCase();
 
   Map<String, dynamic> toJson() => {
@@ -112,6 +123,16 @@ class Bill {
     required this.sourceEmailId,
     this.payUrl,
   });
+
+  Bill withIssuer(String name) => Bill(
+        issuer: name,
+        amount: amount,
+        currency: currency,
+        dueDate: dueDate,
+        lastSeen: lastSeen,
+        sourceEmailId: sourceEmailId,
+        payUrl: payUrl,
+      );
 
   int? get _daysUntilDue {
     if (dueDate == null) return null;
@@ -189,6 +210,17 @@ class Delivery {
   });
 
   bool get isActive => status != DeliveryStatus.delivered && !isStale;
+
+  Delivery withMerchant(String name) => Delivery(
+        merchant: name,
+        carrier: carrier,
+        status: status,
+        trackingNumber: trackingNumber,
+        eta: eta,
+        lastSeen: lastSeen,
+        sourceEmailId: sourceEmailId,
+        trackingUrl: trackingUrl,
+      );
 
   /// An ETA more than a day in the past means it almost certainly arrived —
   /// stop showing it as incoming.
@@ -301,6 +333,61 @@ class EventItem {
       );
 }
 
+enum FeedKind { article, video, podcast, newsletter }
+
+/// Content waiting to be consumed — a paid article (The Ken, Substack), a new
+/// YouTube upload, a podcast episode, a newsletter issue. Email isn't only
+/// money and parcels; a lot of it is a reading queue you never get to.
+class FeedItem {
+  final FeedKind kind;
+
+  /// Publication, channel, or author — "The Ken", "Lenny's Newsletter".
+  final String source;
+  final String title;
+  final String? url;
+  final DateTime date;
+  final DateTime lastSeen;
+  final String sourceEmailId;
+
+  const FeedItem({
+    required this.kind,
+    required this.source,
+    required this.title,
+    this.url,
+    required this.date,
+    required this.lastSeen,
+    required this.sourceEmailId,
+  });
+
+  /// Same source + same title = the same piece, however many nudge emails
+  /// ("you haven't read this yet") the publisher sends.
+  String get dedupeKey =>
+      '${source.toLowerCase().trim()}|${title.toLowerCase().trim()}';
+
+  Map<String, dynamic> toJson() => {
+        'kind': kind.name,
+        'source': source,
+        'title': title,
+        'url': url,
+        'date': date.toIso8601String(),
+        'lastSeen': lastSeen.toIso8601String(),
+        'sourceEmailId': sourceEmailId,
+      };
+
+  factory FeedItem.fromJson(Map<String, dynamic> json) => FeedItem(
+        kind: FeedKind.values.firstWhere(
+          (k) => k.name == json['kind'],
+          orElse: () => FeedKind.article,
+        ),
+        source: json['source'] as String,
+        title: json['title'] as String,
+        url: json['url'] as String?,
+        date: DateTime.parse(json['date'] as String),
+        lastSeen: DateTime.parse(json['lastSeen'] as String),
+        sourceEmailId: json['sourceEmailId'] as String,
+      );
+}
+
 /// Something the user should look at that isn't money or a package —
 /// produced by the AI pass over emails the rule extractors didn't claim.
 class AttentionItem {
@@ -367,6 +454,7 @@ class InsightSnapshot {
   final List<Bill> bills;
   final List<Delivery> deliveries;
   final List<EventItem> events;
+  final List<FeedItem> feed;
   final List<AttentionItem> attention;
   final DailyBrief? brief;
   final DateTime? lastSyncedAt;
@@ -377,6 +465,7 @@ class InsightSnapshot {
     this.bills = const [],
     this.deliveries = const [],
     this.events = const [],
+    this.feed = const [],
     this.attention = const [],
     this.brief,
     this.lastSyncedAt,
@@ -388,7 +477,14 @@ class InsightSnapshot {
       bills.isEmpty &&
       deliveries.isEmpty &&
       events.isEmpty &&
+      feed.isEmpty &&
       attention.isEmpty;
+
+  /// Content from the last two weeks, newest first — the reading queue.
+  List<FeedItem> get recentFeed =>
+      feed.where((f) => f.date.isAfter(
+              DateTime.now().subtract(const Duration(days: 21)))).toList()
+        ..sort((a, b) => b.date.compareTo(a.date));
 
   double get monthlyRecurring =>
       subscriptions.fold(0.0, (sum, s) => sum + s.monthlyAmount);
@@ -430,6 +526,7 @@ class InsightSnapshot {
     List<Bill>? bills,
     List<Delivery>? deliveries,
     List<EventItem>? events,
+    List<FeedItem>? feed,
     List<AttentionItem>? attention,
     DailyBrief? brief,
     DateTime? lastSyncedAt,
@@ -440,6 +537,7 @@ class InsightSnapshot {
         bills: bills ?? this.bills,
         deliveries: deliveries ?? this.deliveries,
         events: events ?? this.events,
+        feed: feed ?? this.feed,
         attention: attention ?? this.attention,
         brief: brief ?? this.brief,
         lastSyncedAt: lastSyncedAt ?? this.lastSyncedAt,
@@ -451,6 +549,7 @@ class InsightSnapshot {
         'bills': bills.map((b) => b.toJson()).toList(),
         'deliveries': deliveries.map((d) => d.toJson()).toList(),
         'events': events.map((e) => e.toJson()).toList(),
+        'feed': feed.map((f) => f.toJson()).toList(),
         'attention': attention.map((a) => a.toJson()).toList(),
         'brief': brief?.toJson(),
         'lastSyncedAt': lastSyncedAt?.toIso8601String(),
@@ -470,6 +569,9 @@ class InsightSnapshot {
             .toList(),
         events: ((json['events'] ?? []) as List)
             .map((e) => EventItem.fromJson(e as Map<String, dynamic>))
+            .toList(),
+        feed: ((json['feed'] ?? []) as List)
+            .map((e) => FeedItem.fromJson(e as Map<String, dynamic>))
             .toList(),
         attention: ((json['attention'] ?? []) as List)
             .map((e) => AttentionItem.fromJson(e as Map<String, dynamic>))

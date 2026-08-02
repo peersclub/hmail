@@ -75,8 +75,10 @@ const _months = {
   'jul': 7, 'aug': 8, 'sep': 9, 'oct': 10, 'nov': 11, 'dec': 12,
 };
 
+// The day-after-month group must not swallow the leading digits of a year:
+// without (?!\d), "1 Aug 2026" reads day=20 and loses the year entirely.
 final _monthNameDate = RegExp(
-  r'\b(?:(\d{1,2})(?:st|nd|rd|th)?\s+)?(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?,?\s+(\d{1,2})?(?:st|nd|rd|th)?,?\s*(\d{4})?',
+  r'\b(?:(\d{1,2})(?:st|nd|rd|th)?\s+)?(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?,?\s*(\d{1,2}(?!\d))?(?:st|nd|rd|th)?,?\s*(\d{4})?',
   caseSensitive: false,
 );
 final _numericDate = RegExp(r'\b(\d{1,2})[/-](\d{1,2})[/-](\d{2,4})\b');
@@ -104,7 +106,10 @@ DateTime? extractDate(String text, {required DateTime anchor}) {
     if (day == null || day < 1 || day > 31) return null;
     var year = int.tryParse(named.group(4) ?? '') ?? anchor.year;
     var candidate = DateTime(year, month, day);
-    if (named.group(4) == null && candidate.isBefore(anchor)) {
+    // Compare whole days: the candidate is midnight, so an anchor later the
+    // same day would otherwise push a date that means "today" a year out.
+    final anchorDay = DateTime(anchor.year, anchor.month, anchor.day);
+    if (named.group(4) == null && candidate.isBefore(anchorDay)) {
       candidate = DateTime(year + 1, month, day);
     }
     return candidate;
@@ -356,6 +361,16 @@ const _merchants = <String, String>{
 
 final _trackingPattern = RegExp(r'\b([A-Z0-9]{10,22})\b');
 
+/// Senders that talk about shipping, packages and delivery as jargon but
+/// never post a physical parcel.
+const _nonCommerceSenders = [
+  'github', 'gitlab', 'bitbucket', 'atlassian', 'jira', 'slack', 'notion',
+  'figma', 'vercel', 'railway', 'netlify', 'linear.app', 'sentry', 'npmjs',
+  'docker', 'circleci', 'asana', 'trello', 'zoom.us', 'dropbox', 'heroku',
+  'cloudflare', 'stripe', 'twilio', 'sendgrid', 'mailchimp', 'substack',
+  'medium.com', 'producthunt', 'openai', 'anthropic',
+];
+
 Delivery? extractDelivery(EmailMeta email) {
   final hay = email.haystack;
   final subject = email.subject.toLowerCase();
@@ -386,6 +401,12 @@ Delivery? extractDelivery(EmailMeta email) {
     'courier', 'item', 'arriving',
   ];
   if (!evidence.any(hay.contains)) return null;
+
+  // Evidence words aren't enough for dev/SaaS senders: "shipped", "delivery"
+  // and "package" are their everyday vocabulary (a diff touching
+  // package.json used to surface as a GitHub parcel). These senders never
+  // ship physical goods, so drop them outright.
+  if (_nonCommerceSenders.any(email.senderDomain.contains)) return null;
 
   String merchant = _titleCaseDomain(email.senderDomain);
   for (final entry in _merchants.entries) {
@@ -445,6 +466,94 @@ Delivery? extractDelivery(EmailMeta email) {
   );
 }
 
+/// Known content senders → (kind, display source). Domain-keyed so a Substack
+/// *receipt* (which says "subscription") still routes to money, while a
+/// Substack *post* lands here.
+const _contentSenders = <String, (FeedKind, String)>{
+  'theken.com': (FeedKind.article, 'The Ken'),
+  'the-ken': (FeedKind.article, 'The Ken'),
+  'substack.com': (FeedKind.newsletter, 'Substack'),
+  'medium.com': (FeedKind.article, 'Medium'),
+  'nytimes.com': (FeedKind.article, 'The New York Times'),
+  'economist.com': (FeedKind.article, 'The Economist'),
+  'stratechery.com': (FeedKind.article, 'Stratechery'),
+  'morningbrew.com': (FeedKind.newsletter, 'Morning Brew'),
+  'finshots': (FeedKind.newsletter, 'Finshots'),
+  'youtube.com': (FeedKind.video, 'YouTube'),
+  'youtube-noreply': (FeedKind.video, 'YouTube'),
+  'spotify.com': (FeedKind.podcast, 'Spotify'),
+  'anchor.fm': (FeedKind.podcast, 'Spotify Podcasts'),
+  'apple.com/podcast': (FeedKind.podcast, 'Apple Podcasts'),
+};
+
+/// Words that signal "here's content to consume" for unknown senders.
+const _contentSignals = [
+  'new post', 'new article', 'new issue', 'new edition', 'just published',
+  'uploaded', 'new video', 'new episode', 'read now', 'this week',
+  'your digest', 'weekly digest', 'newsletter',
+];
+
+/// Senders whose "new post"-style mail is transactional, not content.
+const _notContentSenders = [
+  'github', 'gitlab', 'jira', 'atlassian', 'linkedin', 'twitter', 'x.com',
+  'facebook', 'instagram', 'quora', 'reddit', 'stackoverflow',
+];
+
+FeedItem? extractFeed(EmailMeta email) {
+  final domain = email.senderDomain;
+  final hay = email.haystack;
+
+  (FeedKind, String)? match;
+  for (final entry in _contentSenders.entries) {
+    if (domain.contains(entry.key)) {
+      match = entry.value;
+      break;
+    }
+  }
+
+  // Unknown sender: only claim it as content on clear language, and never for
+  // the social/dev senders whose notifications merely sound content-like.
+  if (match == null) {
+    if (_notContentSenders.any(domain.contains)) return null;
+    if (!_contentSignals.any(hay.contains)) return null;
+    match = (FeedKind.newsletter, _titleCaseDomain(domain));
+  }
+
+  final (kind, source) = match;
+  final title = _cleanFeedTitle(email.subject, source);
+  if (title.isEmpty) return null;
+
+  return FeedItem(
+    kind: kind,
+    source: source,
+    title: title,
+    url: extractActionUrl(
+      email,
+      keywords: ['read', 'watch', 'listen', 'view', 'open', 'continue'],
+    ),
+    date: email.date,
+    lastSeen: email.date,
+    sourceEmailId: email.id,
+  );
+}
+
+/// Strips publisher boilerplate from a subject so the title reads cleanly:
+/// "New post: X" → "X", "Channel uploaded: X" → "X".
+String _cleanFeedTitle(String subject, String source) {
+  var title = subject.trim();
+  final patterns = [
+    RegExp(r'^new (post|article|issue|edition|video|episode)\s*[:\-–]\s*',
+        caseSensitive: false),
+    RegExp(r'^.*?\buploaded\b\s*[:\-–]?\s*', caseSensitive: false),
+    RegExp(r'^just published\s*[:\-–]?\s*', caseSensitive: false),
+    RegExp(r'^\[.*?\]\s*'),
+  ];
+  for (final pattern in patterns) {
+    title = title.replaceFirst(pattern, '');
+  }
+  return title.trim();
+}
+
 const _attentionSignals = [
   'security alert', 'unrecognized device', 'suspicious', 'verify your',
   'password', 'action required', 'expires', 'deadline', 'appointment',
@@ -493,12 +602,14 @@ String _titleCaseDomain(String domain) {
   List<Bill> bills,
   List<Delivery> deliveries,
   List<EventItem> events,
+  List<FeedItem> feed,
   List<EmailMeta> unclaimed,
 }) runExtractors(List<EmailMeta> emails) {
   final subscriptions = <Subscription>[];
   final bills = <Bill>[];
   final deliveries = <Delivery>[];
   final events = <EventItem>[];
+  final feed = <FeedItem>[];
   final unclaimed = <EmailMeta>[];
 
   for (final email in emails) {
@@ -519,9 +630,15 @@ String _titleCaseDomain(String domain) {
       bills.add(bill);
       continue;
     }
+    // Money before feed: a Substack *receipt* is a subscription, not a read.
     final subscription = extractSubscription(email);
     if (subscription != null) {
       subscriptions.add(subscription);
+      continue;
+    }
+    final feedItem = extractFeed(email);
+    if (feedItem != null) {
+      feed.add(feedItem);
       continue;
     }
     unclaimed.add(email);
@@ -532,6 +649,7 @@ String _titleCaseDomain(String domain) {
     bills: bills,
     deliveries: deliveries,
     events: events,
+    feed: feed,
     unclaimed: unclaimed,
   );
 }

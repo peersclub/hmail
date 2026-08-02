@@ -5,12 +5,13 @@ import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 
 import '../../core/palette.dart';
-import '../../domain/actions.dart';
+import '../../domain/insight.dart';
+import '../../domain/insight_mapper.dart';
 import '../../domain/models.dart';
 import '../../state/app_controller.dart';
-import '../action_sheet.dart';
 import '../format.dart';
 import '../glass/glass.dart';
+import '../insight_card.dart';
 
 /// Today — the morning-glance screen. Brief, counts, and everything that
 /// needs the user's attention in the next ten days.
@@ -24,15 +25,17 @@ class TodayScreen extends StatelessWidget {
     final app = context.watch<AppController>();
     final snapshot = app.snapshot;
 
-    final dueSoon = snapshot.unpaidUpcoming
+    // One ranked, cross-domain feed. Today shows only what's pressing —
+    // imminent items as "Needs attention", near items as "Coming up".
+    // Everything ambient (new reads, far-off renewals) lives in Timeline.
+    final insights = rankInsights(snapshotToInsights(snapshot));
+    final attention =
+        insights.where((i) => i.urgency == UrgencyTier.imminent).toList();
+    final comingUp =
+        insights.where((i) => i.urgency == UrgencyTier.near).toList();
+    final dueCount = snapshot.unpaidUpcoming
         .where((b) => b.isOverdue || b.dueWithin(const Duration(days: 10)))
-        .toList();
-    final renewing = snapshot.subscriptions
-        .where((s) => _withinDays(s.nextRenewal, 10))
-        .toList()
-      ..sort((a, b) => a.nextRenewal!.compareTo(b.nextRenewal!));
-    final arriving = snapshot.activeDeliveries;
-    final todayEvents = snapshot.todayEvents;
+        .length;
 
     return CustomScrollView(
       physics: const BouncingScrollPhysics(
@@ -67,116 +70,19 @@ class TodayScreen extends StatelessWidget {
               if (snapshot.brief != null)
                 _briefCard(context, snapshot.brief!,
                     ai: app.aiLabel != 'off' && !app.isDemo),
-              _statStrip(context, snapshot, dueSoon.length),
-              if (todayEvents.isNotEmpty)
+              _statStrip(context, snapshot, dueCount),
+              if (attention.isNotEmpty)
                 GlassSection(
-                  label: "Today's schedule",
+                  label: 'Needs attention',
                   children: [
-                    for (final event in todayEvents)
-                      GlassRow(
-                        icon: CupertinoIcons.calendar,
-                        title: event.title,
-                        subtitle: _timeRange(event),
-                        trailingCaption:
-                            event.meetingUrl != null ? 'Join' : null,
-                        trailingCaptionColor: Palette.accent(context),
-                        onTap: () => showInsightActions(
-                          context,
-                          title: event.title,
-                          message: _timeRange(event),
-                          actions: actionsForEvent(event),
-                        ),
-                      ),
+                    for (final i in attention) InsightCard(insight: i),
                   ],
                 ),
-              if (snapshot.attention.isNotEmpty)
+              if (comingUp.isNotEmpty)
                 GlassSection(
-                  label: 'Needs your attention',
+                  label: 'Coming up',
                   children: [
-                    for (final item in snapshot.attention)
-                      GlassRow(
-                        icon: CupertinoIcons.exclamationmark_bubble,
-                        title: item.title,
-                        titleMaxLines: 2,
-                        subtitle: item.reason,
-                        subtitleMaxLines: 2,
-                        onTap: () => showInsightActions(
-                          context,
-                          title: item.title,
-                          actions: actionsForAttention(item),
-                        ),
-                      ),
-                  ],
-                ),
-              if (dueSoon.isNotEmpty)
-                GlassSection(
-                  label: 'Due soon',
-                  children: [
-                    for (final bill in dueSoon)
-                      GlassRow(
-                        icon: CupertinoIcons.doc_text_fill,
-                        title: bill.issuer,
-                        trailing: formatMoney(bill.amount, bill.currency),
-                        trailingCaption: bill.isOverdue
-                            ? 'Overdue'
-                            : 'Due ${formatDay(bill.dueDate!)}',
-                        trailingCaptionColor: Palette.urgency(
-                            context, bill.dueDate,
-                            overdue: bill.isOverdue),
-                        trailingCaptionPill: bill.isOverdue,
-                        onTap: () => showInsightActions(
-                          context,
-                          title: bill.issuer,
-                          message: formatMoney(bill.amount, bill.currency),
-                          actions: actionsForBill(bill),
-                        ),
-                      ),
-                  ],
-                ),
-              if (renewing.isNotEmpty)
-                GlassSection(
-                  label: 'Renewing',
-                  children: [
-                    for (final sub in renewing)
-                      GlassRow(
-                        icon: CupertinoIcons.arrow_2_circlepath,
-                        title: sub.service,
-                        trailing: formatMoney(sub.amount, sub.currency),
-                        trailingCaption:
-                            'Renews ${formatDay(sub.nextRenewal!)}',
-                        trailingCaptionColor:
-                            Palette.urgency(context, sub.nextRenewal),
-                        onTap: () => showInsightActions(
-                          context,
-                          title: sub.service,
-                          actions: actionsForSubscription(sub),
-                        ),
-                      ),
-                  ],
-                ),
-              if (arriving.isNotEmpty)
-                GlassSection(
-                  label: 'Arriving',
-                  children: [
-                    for (final delivery in arriving)
-                      GlassRow(
-                        icon: CupertinoIcons.cube_box_fill,
-                        title: delivery.merchant,
-                        subtitle: _deliverySubtitle(delivery),
-                        trailingCaption: delivery.eta == null
-                            ? null
-                            : formatDay(delivery.eta!),
-                        trailingCaptionColor: delivery.eta != null &&
-                                !delivery.eta!.isBefore(DateTime.now())
-                            ? Palette.urgency(context, delivery.eta)
-                            : null,
-                        onTap: () => showInsightActions(
-                          context,
-                          title: delivery.merchant,
-                          message: _deliverySubtitle(delivery),
-                          actions: actionsForDelivery(delivery),
-                        ),
-                      ),
+                    for (final i in comingUp) InsightCard(insight: i),
                   ],
                 ),
               if (snapshot.isEmpty)
@@ -186,6 +92,18 @@ class TodayScreen extends StatelessWidget {
                   caption: app.phase == AppPhase.syncing
                       ? 'Scanning your Gmail…'
                       : 'Pull down to scan your Gmail for bills, subscriptions and deliveries.',
+                )
+              else if (attention.isEmpty && comingUp.isEmpty)
+                GlassSection(
+                  children: [
+                    GlassRow(
+                      icon: CupertinoIcons.checkmark_circle,
+                      title: 'All clear',
+                      subtitle:
+                          'Nothing pressing today. Browse everything in Timeline.',
+                      onTap: () => onNavigate?.call(2),
+                    ),
+                  ],
                 ),
               if (snapshot.lastSyncedAt != null)
                 Footnote(
@@ -199,32 +117,8 @@ class TodayScreen extends StatelessWidget {
     );
   }
 
-  static bool _withinDays(DateTime? date, int days) {
-    if (date == null) return false;
-    final now = DateTime.now();
-    final diff = DateTime(date.year, date.month, date.day)
-        .difference(DateTime(now.year, now.month, now.day))
-        .inDays;
-    return diff >= 0 && diff <= days;
-  }
 
-  static String _timeRange(EventItem event) {
-    final fmt = DateFormat.jm();
-    final start = fmt.format(event.start);
-    if (event.end == null) return start;
-    return '$start – ${fmt.format(event.end!)}';
-  }
 
-  static String _deliverySubtitle(Delivery delivery) {
-    final status = switch (delivery.status) {
-      DeliveryStatus.outForDelivery => 'Out for delivery',
-      DeliveryStatus.shipped => 'Shipped',
-      DeliveryStatus.ordered => 'Order confirmed',
-      DeliveryStatus.delivered => 'Delivered',
-    };
-    final carrier = delivery.carrier;
-    return carrier == null ? status : '$status · $carrier';
-  }
 
   Widget _accountBubble(BuildContext context, AppController app) {
     return Container(

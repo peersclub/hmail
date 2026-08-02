@@ -53,3 +53,32 @@ Victor rejected both the Material editorial look and the plain Cupertino grouped
 **Process:** foundation single-authored, then four parallel agents rebuilt Today / Money / Packages / Sign-in+Settings against the contract. Concurrent session added Event extraction (todayEvents, meetings in brief) — Today screen binds to it.
 
 Also this session: AI gateway switched Anthropic-direct → **OpenRouter** (`OPENROUTER_API_KEY` + `OPENROUTER_MODEL`, default `anthropic/claude-haiku-4.5`); real-Gmail extraction fixes (bill amount near due-language, date-only overdue, stale-bill aging, cache key bump).
+
+## 2026-08-02 — Reads pillar + native iOS 26 glass + settings alignment
+
+**New insight category — Reads.** Email isn't only money and parcels; it's an unread reading queue. Added `FeedItem` (article/newsletter/video/podcast) with a rule extractor (`extractFeed`) keyed on known content senders (The Ken, Substack, Medium, YouTube, Spotify, NYT, Economist, Stratechery, Morning Brew, Finshots) plus a language fallback, gated against dev/social senders. Routed in `runExtractors` **after** money so a Substack *receipt* stays a subscription while a Substack *post* becomes a read. Wired end-to-end: `InsightSnapshot.feed` + `recentFeed`, `scanReads` ScanSettings toggle + 5th Gmail query, sync engine, store merge (dedupe by source+title), demo fixtures, store key v5. New **Reads tab** (5th, book icon) grouping by kind, each row opens the piece via the existing action launcher. 175 tests green (added feed extractor tests; updated concurrent session's query-count/describeScope expectations for the +1 query).
+
+**Design system reset (earlier this session).** Rejected Material and plain-Cupertino looks. Now: `cupertino_native_plus` for the **native iOS 26 Liquid Glass** dock (real UITabBar glass) after Flutter SDK upgrade to 3.44.8; Flutter-drawn `GlassCard` (BackdropFilter) for scrolling cards (native platform-view glass desyncs while scrolling). Monochrome **ink accent** (near-black/near-white) — no system blue. Apple-native type scale (17/15 rows, regular weights, sentence case). Overdue shows as a pill. Status-bar scrim. Tested on iPhone 17 Pro / iOS 26.5.
+
+**Settings alignment fix.** The hand-built profile + syncing rows still used the old 16/13 type scale and a 36pt avatar while every real `GlassRow` moved to 17/15 + 38pt badge — that 2px/font mismatch was the visible misalignment. Aligned both to the GlassRow contract.
+
+**Data honesty.** Delivery extractor now requires commerce evidence (killed "GitHub shipped dark mode" false parcels); deliveries with long-past ETAs age out; bill dedupe is issuer+due-day+amount (killed duplicate CRED rows).
+
+**Still open (next):** multiple Gmail accounts (needs real 2nd sign-in to verify — data layer not yet built); a Reads toggle in the Scan settings screen (query defaults on, just not user-visible yet); AI brief could summarize the reading queue.
+
+## 2026-08-02 — Phase 1 IA refactor: type-driven Insight architecture + Timeline
+
+A UX-review agent found the core scaling flaw: one-tab-per-category hits iOS's ~5-tab ceiling (already at 5) and most tabs sit empty on a quiet day. Verdict — visual system (glass, ink) is good and stays; **navigation architecture needed rework**. User greenlit the full Phase 1.
+
+**Built (adapter approach — kept the 6 typed models + their tests + persistence intact):**
+- `domain/insight.dart` — generic `Insight` (id, domain, title, subtitle, trailing, caption, anchorDate, overdue, icon, brandKey, weight, actions), `InsightDomain` enum (security/money/commerce/travel/work/content/personal/government, each with label+icon), `UrgencyTier` (imminent <6h / near ≤3d / ambient), and `rankInsights()` — urgency tier → weight → soonest anchor.
+- `domain/insight_mapper.dart` — `snapshotToInsights()` wraps every typed model into `Insight` (weights: security 100 > overdue bill 90 > due-soon 70 > sub 55 > delivery 45 > content 20), reusing existing `actionsForX` builders; `presentDomains()` drives Timeline chips.
+- `ui/insight_card.dart` — ONE row renders any Insight (brand glyph via BrandIcons, tap→action sheet). New insight types now = model + extractor + one mapper block, **zero navigation code**.
+- `ui/screens/timeline_screen.dart` (agent-built) — chip-filtered feed replacing Packages+Reads AND all future domains; chips appear only for domains with data.
+- **Today rewritten**: brief + stat strip kept; the 5 hand-rolled sections collapsed into ranked tiers — "Needs attention" (imminent) / "Coming up" (near) / "All clear" fallback. Ambient items (reads, far renewals) live in Timeline only.
+- **Shell → 4 tabs**: Today · Money · Timeline · Settings. Dock updated (Timeline = stacked-squares SF Symbol). Deleted `packages_screen.dart` + `reads_screen.dart`.
+- **Brand icons**: `simple_icons` (1500+ brands) wired across screens as monochrome-tinted glyphs (Netflix/Spotify/YouTube/Substack/Uber/Swiggy… render as ink silhouettes; unknown senders keep the generic category icon). Simple Icons omits some trademarks (Amazon/Adobe/Flipkart) → those fall back cleanly.
+
+**259 tests green in isolation** (251 existing + 8 new insight/ranker/mapper). Build was momentarily blocked by a **concurrent session's in-flight files** (`knowledge_mapper.dart` referencing `MoneyMatch` without import, sync_engine/sync_report mid-edit) — not Phase 1 code; a background watcher waits for the tree to compile clean, then builds + installs to the iPhone.
+
+**Next (Phase 2, per review):** new domains on the now-cheap architecture — Security (OTPs/login alerts, currently mis-bucketed in AttentionItem), Money (refunds/failed payments), Travel (flights/check-in/boarding passes). Plus multiple Gmail accounts (still deferred).

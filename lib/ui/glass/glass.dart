@@ -559,9 +559,9 @@ class GlassDock extends StatelessWidget {
             activeIcon: CNIcon.symbol('creditcard.fill'),
           ),
           CNTabBarItem(
-            label: 'Packages',
-            icon: CNIcon.symbol('shippingbox'),
-            activeIcon: CNIcon.symbol('shippingbox.fill'),
+            label: 'Timeline',
+            icon: CNIcon.symbol('square.stack.3d.up'),
+            activeIcon: CNIcon.symbol('square.stack.3d.up.fill'),
           ),
           CNTabBarItem(
             label: 'Settings',

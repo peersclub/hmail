@@ -3,6 +3,7 @@ import 'dart:ui' as ui;
 import 'package:flutter/cupertino.dart';
 import 'package:provider/provider.dart';
 
+import '../../core/brand_icons.dart';
 import '../../core/palette.dart';
 import '../../domain/actions.dart';
 import '../../domain/models.dart';
@@ -65,7 +66,8 @@ class MoneyScreen extends StatelessWidget {
               children: [
                 for (final sub in allSubs)
                   GlassRow(
-                    icon: CupertinoIcons.arrow_2_circlepath,
+                    icon: BrandIcons.forName(sub.service) ??
+                        CupertinoIcons.arrow_2_circlepath,
                     title: sub.service,
                     subtitle: _subscriptionSubtitle(sub),
                     trailing:

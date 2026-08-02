@@ -2,8 +2,8 @@ import 'package:flutter/cupertino.dart';
 
 import '../glass/glass.dart';
 import 'money_screen.dart';
-import 'packages_screen.dart';
 import 'settings_screen.dart';
+import 'timeline_screen.dart';
 import 'today_screen.dart';
 
 /// App shell: content behind a floating liquid-glass dock.
@@ -30,7 +30,7 @@ class _ShellScreenState extends State<ShellScreen> {
                 children: [
                   TodayScreen(onNavigate: (tab) => setState(() => _index = tab)),
                   const MoneyScreen(),
-                  const PackagesScreen(),
+                  const TimelineScreen(),
                   const SettingsScreen(),
                 ],
               ),

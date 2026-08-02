@@ -143,6 +143,33 @@ class DemoMailSource implements MailSource {
             'Your passport renewal application requires you to book an appointment slot within 7 days or the application expires.',
         date: now.subtract(const Duration(days: 1)),
       ),
+      EmailMeta(
+        id: 'demo-ken',
+        from: 'The Ken <newsletters@theken.com>',
+        subject: 'The great Indian quick-commerce shakeout',
+        snippet: 'Read now.',
+        body:
+            'Your daily story is live. Read now: https://the-ken.com/story/quick-commerce-shakeout',
+        date: now.subtract(const Duration(hours: 5)),
+      ),
+      EmailMeta(
+        id: 'demo-substack',
+        from: "Lenny's Newsletter <lenny@substack.com>",
+        subject: 'New post: How the best PMs run discovery',
+        snippet: 'A new issue.',
+        body:
+            'A new issue just landed. Read it here: https://lennysnewsletter.com/p/discovery',
+        date: now.subtract(const Duration(days: 1)),
+      ),
+      EmailMeta(
+        id: 'demo-yt',
+        from: 'YouTube <noreply@youtube.com>',
+        subject: 'Veritasium uploaded: The riddle that fooled Einstein',
+        snippet: 'New video.',
+        body:
+            'A channel you subscribe to posted a new video. Watch: https://youtube.com/watch?v=xyz',
+        date: now.subtract(const Duration(days: 2)),
+      ),
     ];
   }
 }
