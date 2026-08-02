@@ -29,11 +29,27 @@ class InsightAction {
 /// Deep link into the source message. Gmail registers mail.google.com as a
 /// universal link, so this opens the Gmail app when installed and the web
 /// client otherwise.
-InsightAction openEmailAction(String sourceEmailId) => InsightAction(
-      label: 'Open email',
-      uri: Uri.parse('https://mail.google.com/mail/u/0/#all/$sourceEmailId'),
-      kind: ActionKind.openEmail,
-    );
+/// Multi-account email ids arrive prefixed `a<N>:<gmailId>` (see
+/// MultiGmailSource). Gmail can't resolve the prefixed form, so the prefix is
+/// stripped here — and repurposed: N is the account's index, which maps to
+/// Gmail's `/mail/u/<N>/` authuser slot so the message opens in the *right*
+/// inbox, not whichever account happens to be Gmail's default.
+final _accountPrefixed = RegExp(r'^a(\d+):(.+)$');
+
+InsightAction openEmailAction(String sourceEmailId) {
+  var account = 0;
+  var id = sourceEmailId;
+  final m = _accountPrefixed.firstMatch(sourceEmailId);
+  if (m != null) {
+    account = int.parse(m.group(1)!);
+    id = m.group(2)!;
+  }
+  return InsightAction(
+    label: 'Open email',
+    uri: Uri.parse('https://mail.google.com/mail/u/$account/#all/$id'),
+    kind: ActionKind.openEmail,
+  );
+}
 
 /// Carrier tracking page templates, keyed by the carrier names the
 /// extractors produce. `{n}` is the tracking number slot.

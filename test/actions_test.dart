@@ -262,4 +262,20 @@ void main() {
       expect(result.bills, isEmpty);
     });
   });
+
+  group('openEmailAction with multi-account ids', () {
+    test('strips the account prefix and routes to that account\'s inbox', () {
+      final action = openEmailAction('a1:18c4f2ab9');
+      expect(action.uri.toString(),
+          'https://mail.google.com/mail/u/1/#all/18c4f2ab9',
+          reason: 'the a1: prefix must not leak into the Gmail URL, and the '
+              'message must open under authuser 1, not the default account');
+    });
+
+    test('unprefixed ids (demo, legacy) keep working under u/0', () {
+      final action = openEmailAction('demo-netflix');
+      expect(action.uri.toString(),
+          'https://mail.google.com/mail/u/0/#all/demo-netflix');
+    });
+  });
 }
