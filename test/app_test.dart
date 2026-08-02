@@ -107,7 +107,7 @@ void main() {
       await tester.pump(const Duration(milliseconds: 700));
       expect(find.text('Welcome to NoMail'), findsOneWidget);
       expect(find.text('Continue with Google'), findsOneWidget);
-      expect(find.text('Try the Demo'), findsOneWidget);
+      expect(find.text('Explore with Sample Data'), findsOneWidget);
     });
 
     testWidgets('demo mode renders brief and demo banner', (tester) async {

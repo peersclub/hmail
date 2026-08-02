@@ -9,12 +9,19 @@ class BackupMeta {
   final String deviceLabel;
   final String? accountEmail;
 
+  /// What's inside — lets the restore confirmation say "214 insights and
+  /// 6 learned types" instead of asking the user to trust a file blindly.
+  final int insightCount;
+  final int learnedTypeCount;
+
   const BackupMeta({
     required this.createdAt,
     required this.sizeBytes,
     required this.version,
     required this.deviceLabel,
     this.accountEmail,
+    this.insightCount = 0,
+    this.learnedTypeCount = 0,
   });
 
   factory BackupMeta.of(BackupBundle b) => BackupMeta(
@@ -23,6 +30,8 @@ class BackupMeta {
         version: b.version,
         deviceLabel: b.deviceLabel,
         accountEmail: b.accountEmail,
+        insightCount: b.insightCount,
+        learnedTypeCount: b.learnedTypeCount,
       );
 }
 
@@ -43,6 +52,11 @@ abstract interface class BackupTarget {
   /// signed in, container reachable). The UI greys out unavailable targets
   /// rather than letting a backup fail mid-flight.
   Future<bool> isAvailable();
+
+  /// Whether the destination can be written *silently* — no consent sheet,
+  /// no user interaction. Automatic background backups run only when this is
+  /// true; a surprise permission popup after a sync would be hostile.
+  Future<bool> isAuthorized();
 
   /// Metadata of the newest backup, or null if none exists yet.
   Future<BackupMeta?> latest();
@@ -81,6 +95,9 @@ class MemoryBackupTarget implements BackupTarget {
 
   @override
   Future<bool> isAvailable() async => available;
+
+  @override
+  Future<bool> isAuthorized() async => available;
 
   @override
   Future<BackupMeta?> latest() async =>

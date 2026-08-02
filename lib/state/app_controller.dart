@@ -23,6 +23,7 @@ import '../data/store/timeline_order_store.dart';
 import '../data/sync/sync_engine.dart';
 import '../domain/actions.dart';
 import '../domain/backfill_stats.dart';
+import '../domain/backup_bundle.dart';
 import '../domain/backup_prefs.dart';
 import '../domain/knowledge.dart';
 import '../domain/models.dart';
@@ -30,6 +31,14 @@ import '../domain/scan_settings.dart';
 import '../domain/sync_report.dart';
 
 enum AppPhase { booting, signedOut, syncing, ready }
+
+/// What the backup subsystem is doing right now — drives inline progress on
+/// the Backup screen (never a modal, never a footnote far from the action).
+enum BackupActivity { idle, backingUp, checking, restoring }
+
+/// Which action an error belongs to, so the message renders directly under
+/// the control the user actually tapped.
+enum BackupErrorScope { backup, restore }
 
 /// Thin orchestrator: owns phase + snapshot, delegates work to [SyncEngine].
 class AppController extends ChangeNotifier {
@@ -52,13 +61,16 @@ class AppController extends ChangeNotifier {
     timeline: TimelineOrderStore(),
   );
   final BackupPrefsStore _backupPrefsStore = BackupPrefsStore();
-  late final Map<String, BackupTarget> _backupTargets = {
-    'gdrive': DriveBackupTarget(
-      signedIn: () async => !_isDemo && _auth.hasAccounts,
-      connect: _auth.driveApi,
-    ),
-    'icloud': const ICloudBackupTarget(),
-  };
+  final Map<String, BackupTarget>? _backupTargetsOverride;
+  late final Map<String, BackupTarget> _backupTargets =
+      _backupTargetsOverride ??
+          {
+            'gdrive': DriveBackupTarget(
+              signedIn: () async => !_isDemo && _auth.hasAccounts,
+              connect: _auth.driveApi,
+            ),
+            'icloud': const ICloudBackupTarget(),
+          };
 
   AppController({
     GmailAuth? auth,
@@ -69,7 +81,9 @@ class AppController extends ChangeNotifier {
     AiStatusService? aiStatusService,
     KnowledgeStore? knowledgeStore,
     KnowledgeLearner? learner,
-  })  : _auth = auth ?? GmailAuth(),
+    Map<String, BackupTarget>? backupTargets,
+  })  : _backupTargetsOverride = backupTargets,
+        _auth = auth ?? GmailAuth(),
         _store = store ?? InsightStore(),
         _ai = ai ?? OpenRouterAi(),
         _notifications = notifications ?? NotificationService(),
@@ -172,14 +186,27 @@ class AppController extends ChangeNotifier {
 
   // ── Backup ────────────────────────────────────────────────────────────
   BackupPrefs _backupPrefs = const BackupPrefs();
-  bool _backupBusy = false;
+  BackupActivity _backupActivity = BackupActivity.idle;
   String? _backupError;
+  BackupErrorScope? _backupErrorScope;
+  String? _backupNotice;
+  BackupErrorScope? _backupNoticeScope;
   BackupMeta? _remoteBackupMeta;
   bool _remoteMetaChecked = false;
+  BackupBundle? _restoreCandidate;
 
   BackupPrefs get backupPrefs => _backupPrefs;
-  bool get backupBusy => _backupBusy;
+  BackupActivity get backupActivity => _backupActivity;
+  bool get backupBusy => _backupActivity != BackupActivity.idle;
+
+  /// Failure message for the *last* backup action, with the scope naming the
+  /// control it belongs under. Cleared when a new action starts.
   String? get backupError => _backupError;
+  BackupErrorScope? get backupErrorScope => _backupErrorScope;
+
+  /// In-flow success line ("Backed up · 12 KB"), scoped like errors.
+  String? get backupNotice => _backupNotice;
+  BackupErrorScope? get backupNoticeScope => _backupNoticeScope;
 
   /// Metadata of the backup currently in the cloud, once [refreshRemoteMeta]
   /// has run. Null means "none found" or "not checked yet" — disambiguate with
@@ -187,14 +214,39 @@ class AppController extends ChangeNotifier {
   BackupMeta? get remoteBackupMeta => _remoteBackupMeta;
   bool get remoteMetaChecked => _remoteMetaChecked;
 
+  /// The downloaded bundle awaiting the user's restore confirmation.
+  BackupBundle? get restoreCandidate => _restoreCandidate;
+
   List<BackupTarget> get backupTargets => _backupTargets.values.toList();
 
   BackupTarget get _selectedTarget =>
-      _backupTargets[_backupPrefs.destinationId] ?? _backupTargets['gdrive']!;
+      _backupTargets[_backupPrefs.destinationId] ?? _backupTargets.values.first;
 
   String get backupDestinationLabel => _selectedTarget.label;
 
   String _deviceLabel() => accountName ?? accountEmail ?? 'This device';
+
+  void _startBackupAction(BackupActivity activity) {
+    _backupActivity = activity;
+    _backupError = null;
+    _backupErrorScope = null;
+    _backupNotice = null;
+    _backupNoticeScope = null;
+    notifyListeners();
+  }
+
+  void _finishBackupAction({
+    String? error,
+    String? notice,
+    required BackupErrorScope scope,
+  }) {
+    _backupActivity = BackupActivity.idle;
+    _backupError = error;
+    _backupErrorScope = error == null ? null : scope;
+    _backupNotice = notice;
+    _backupNoticeScope = notice == null ? null : scope;
+    notifyListeners();
+  }
 
   Future<bool> backupTargetAvailable(String id) async {
     final t = _backupTargets[id];
@@ -212,6 +264,7 @@ class AppController extends ChangeNotifier {
     _remoteBackupMeta = null;
     _remoteMetaChecked = false;
     _backupError = null;
+    _backupNotice = null;
     notifyListeners();
     await _backupPrefsStore.save(_backupPrefs);
     unawaited(refreshRemoteMeta());
@@ -223,13 +276,12 @@ class AppController extends ChangeNotifier {
     await _backupPrefsStore.save(_backupPrefs);
   }
 
-  /// Manual "Back Up Now". Returns true on success; the message on failure is
-  /// in [backupError].
+  /// Manual "Back Up Now". On success the status card and inline notice update
+  /// in place; on failure [backupError] carries the reason + recovery and
+  /// renders directly under the button. Returns true on success.
   Future<bool> backUpNow() async {
-    if (_backupBusy || _isDemo) return false;
-    _backupBusy = true;
-    _backupError = null;
-    notifyListeners();
+    if (backupBusy || _isDemo) return false;
+    _startBackupAction(BackupActivity.backingUp);
     try {
       final meta = await _backup.backUpTo(
         _selectedTarget,
@@ -240,47 +292,105 @@ class AppController extends ChangeNotifier {
       _remoteBackupMeta = meta;
       _remoteMetaChecked = true;
       await _backupPrefsStore.save(_backupPrefs);
+      _finishBackupAction(
+        notice: 'Backed up · ${_formatSize(meta.sizeBytes)}',
+        scope: BackupErrorScope.backup,
+      );
       return true;
     } on BackupException catch (e) {
-      _backupError = e.message;
+      _finishBackupAction(error: e.message, scope: BackupErrorScope.backup);
       return false;
     } catch (e) {
-      _backupError = 'Backup failed: $e';
+      _finishBackupAction(
+        error: 'Something unexpected went wrong. Try again.',
+        scope: BackupErrorScope.backup,
+      );
       return false;
-    } finally {
-      _backupBusy = false;
-      notifyListeners();
     }
   }
 
-  /// Downloads the newest backup and rehydrates the stores, then reloads the
-  /// controller's in-memory state so the UI reflects the restored data at once.
-  Future<RestoreOutcome?> restoreFromBackup() async {
-    if (_backupBusy || _isDemo) return null;
-    _backupBusy = true;
-    _backupError = null;
-    notifyListeners();
+  /// Step 1 of restore: fetch the newest backup (may show the Google consent
+  /// sheet — the user explicitly asked). On success the bundle is held as
+  /// [restoreCandidate] for the UI to confirm; nothing is applied yet.
+  Future<BackupMeta?> prepareRestore() async {
+    if (backupBusy || _isDemo) return null;
+    _startBackupAction(BackupActivity.checking);
     try {
-      final outcome = await _backup.restoreFrom(_selectedTarget);
-      if (outcome == null) {
-        _backupError = 'No backup found in ${_selectedTarget.label}.';
+      final bundle = await _selectedTarget.download();
+      if (bundle == null) {
+        _finishBackupAction(
+          error: 'No backup found in ${_selectedTarget.label} for '
+              '${accountEmail ?? 'this account'}.',
+          scope: BackupErrorScope.restore,
+        );
         return null;
       }
-      await _reloadFromStores();
-      return outcome;
+      _restoreCandidate = bundle;
+      final meta = BackupMeta.of(bundle);
+      _remoteBackupMeta = meta;
+      _remoteMetaChecked = true;
+      _finishBackupAction(scope: BackupErrorScope.restore);
+      return meta;
     } on BackupException catch (e) {
-      _backupError = e.message;
+      _finishBackupAction(error: e.message, scope: BackupErrorScope.restore);
       return null;
     } catch (e) {
-      _backupError = 'Restore failed: $e';
+      _finishBackupAction(
+        error: 'Something unexpected went wrong. Try again.',
+        scope: BackupErrorScope.restore,
+      );
       return null;
-    } finally {
-      _backupBusy = false;
-      notifyListeners();
     }
   }
 
-  /// Reads the destination's backup metadata for the summary card.
+  /// Step 2: the user confirmed — apply the held bundle and reload the app's
+  /// in-memory state so every screen reflects the restored data at once.
+  Future<RestoreOutcome?> confirmRestore() async {
+    final bundle = _restoreCandidate;
+    if (bundle == null || backupBusy) return null;
+    _startBackupAction(BackupActivity.restoring);
+    try {
+      final outcome = await _backup.restore(bundle);
+      _restoreCandidate = null;
+      await _reloadFromStores();
+      _finishBackupAction(
+        notice: _restoreNotice(outcome),
+        scope: BackupErrorScope.restore,
+      );
+      return outcome;
+    } catch (e) {
+      _finishBackupAction(
+        error: 'Restore didn\'t complete. Your existing data is untouched — '
+            'try again.',
+        scope: BackupErrorScope.restore,
+      );
+      return null;
+    }
+  }
+
+  void cancelRestore() {
+    _restoreCandidate = null;
+    notifyListeners();
+  }
+
+  static String _restoreNotice(RestoreOutcome o) {
+    final parts = <String>[
+      '${o.insightCount} insight${o.insightCount == 1 ? '' : 's'}',
+      if (o.learnedTypeCount > 0)
+        '${o.learnedTypeCount} learned type'
+            '${o.learnedTypeCount == 1 ? '' : 's'}',
+    ];
+    return 'Restored ${parts.join(' and ')}';
+  }
+
+  static String _formatSize(int bytes) {
+    if (bytes < 1024) return '$bytes B';
+    if (bytes < 1024 * 1024) return '${(bytes / 1024).toStringAsFixed(0)} KB';
+    return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
+  }
+
+  /// Reads the destination's backup metadata for the summary card. Silent —
+  /// never triggers a consent prompt.
   Future<BackupMeta?> refreshRemoteMeta() async {
     try {
       final target = _selectedTarget;
@@ -291,8 +401,6 @@ class AppController extends ChangeNotifier {
         return null;
       }
       _remoteBackupMeta = await target.latest();
-    } on BackupException catch (e) {
-      _backupError = e.message;
     } catch (_) {
       // Metadata is best-effort; a read failure shouldn't break the screen.
     }
@@ -302,11 +410,27 @@ class AppController extends ChangeNotifier {
   }
 
   /// Fired after a successful sync: backs up opportunistically when the chosen
-  /// frequency says one is due. Best-effort — a backup failure never disrupts
-  /// the sync that triggered it.
+  /// frequency says one is due. Fully silent — it runs only when the target is
+  /// already authorized (never a surprise consent sheet) and swallows failures
+  /// (a background backup must never interrupt the sync that triggered it).
   Future<void> _maybeAutoBackup() async {
     if (_isDemo || !_backupPrefs.isDue(DateTime.now())) return;
-    await backUpNow();
+    final target = _selectedTarget;
+    try {
+      if (!await target.isAuthorized()) return;
+      final meta = await _backup.backUpTo(
+        target,
+        deviceLabel: _deviceLabel(),
+        accountEmail: accountEmail,
+      );
+      _backupPrefs = _backupPrefs.copyWith(lastBackupAt: meta.createdAt);
+      _remoteBackupMeta = meta;
+      _remoteMetaChecked = true;
+      await _backupPrefsStore.save(_backupPrefs);
+      notifyListeners();
+    } catch (_) {
+      // Best-effort by design.
+    }
   }
 
   Future<void> _reloadFromStores() async {
@@ -319,6 +443,7 @@ class AppController extends ChangeNotifier {
     }
     notifyListeners();
   }
+
 
   SyncEngine _engine(MailSource source, {InsightAi? ai}) =>
       SyncEngine(source: source, ai: ai ?? _ai, store: _store);
@@ -348,12 +473,21 @@ class AppController extends ChangeNotifier {
     }
   }
 
+  /// True while the Google OAuth sheet is (or may be) on screen. The phase
+  /// stays [AppPhase.signedOut] during authentication so the router keeps the
+  /// sign-in screen mounted — flipping to syncing before auth succeeded used
+  /// to flash the empty shell behind the OAuth sheet, then bounce back on
+  /// cancel. The sign-in screen shows its progress state off this flag.
+  bool _authenticating = false;
+  bool get authenticating => _authenticating;
+
   Future<void> signIn() async {
     _error = null;
-    _phase = AppPhase.syncing;
+    _authenticating = true;
     notifyListeners();
 
     final ok = await _auth.signIn();
+    _authenticating = false;
     if (!ok) {
       _phase = AppPhase.signedOut;
       _error = _auth.isConfigured
@@ -363,7 +497,10 @@ class AppController extends ChangeNotifier {
       return;
     }
 
+    // Only now does the app leave the sign-in screen — for a real sync.
     _isDemo = false;
+    _phase = AppPhase.syncing;
+    notifyListeners();
     await sync();
   }
 

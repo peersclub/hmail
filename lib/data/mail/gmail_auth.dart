@@ -6,6 +6,25 @@ import 'package:googleapis/drive/v3.dart' as drive;
 import 'package:googleapis/gmail/v1.dart';
 import 'package:http/http.dart' as http;
 
+/// Why a Drive authorization attempt produced no API — each case gets its own
+/// user-facing message and recovery in the backup flow.
+enum DriveAuthIssue {
+  /// No Google account is connected at all.
+  notSignedIn,
+
+  /// Silent check: the scope simply hasn't been granted yet (not an error).
+  notGranted,
+
+  /// The user saw the consent sheet and cancelled it.
+  declined,
+
+  /// Sign-in plumbing failed (network, platform error).
+  failed,
+}
+
+/// Result of a Drive authorization attempt: exactly one side is non-null.
+typedef DriveAuth = ({drive.DriveApi? api, DriveAuthIssue? issue});
+
 /// One connected Gmail account: the signed-in Google identity paired with an
 /// authorized read-only [GmailApi] client.
 class GmailAccount {
@@ -147,20 +166,21 @@ class GmailAuth {
     }
   }
 
-  /// Returns a [drive.DriveApi] authorized for the app-data Drive scope, or null
-  /// if no account is connected or authorization isn't available.
+  /// Attempts to produce a [drive.DriveApi] authorized for the app-data scope,
+  /// reporting *why* when it can't — the backup UI turns each issue into a
+  /// specific, recoverable message instead of a generic "backup failed".
   ///
   /// [interactive] gates the consent prompt: when false (the default) this only
-  /// returns an API if the scope was *already* granted — a silent check safe to
-  /// call on screen load or for metadata. Only pass true from an explicit user
+  /// succeeds if the scope was *already* granted — a silent check safe to call
+  /// on screen load or for metadata. Only pass true from an explicit user
   /// action (Back Up Now / Restore), which may show the Google consent sheet.
   ///
   /// `appDataFolder` is a hidden per-app folder — invisible in the user's Drive
   /// and unreadable by other apps — so this never touches their real files. The
   /// `drive.appdata` scope must be on the OAuth consent screen to be grantable.
-  Future<drive.DriveApi?> driveApi({bool interactive = false}) async {
+  Future<DriveAuth> driveApi({bool interactive = false}) async {
     final acct = first?.account;
-    if (acct == null) return null;
+    if (acct == null) return (api: null, issue: DriveAuthIssue.notSignedIn);
     try {
       await _ensureInitialized();
       final client = acct.authorizationClient;
@@ -168,10 +188,12 @@ class GmailAuth {
       var authorization = await client.authorizationForScopes(driveScopes);
       if (authorization == null) {
         // Not yet granted. Don't prompt unless the caller explicitly asked.
-        if (!interactive) return null;
+        if (!interactive) {
+          return (api: null, issue: DriveAuthIssue.notGranted);
+        }
         authorization = await client.authorizeScopes(driveScopes);
       }
-      return drive.DriveApi(_BearerClient(
+      final api = drive.DriveApi(_BearerClient(
         ({bool refresh = false}) async {
           try {
             final fresh = await client.authorizationForScopes(driveScopes);
@@ -182,8 +204,16 @@ class GmailAuth {
         },
         initialToken: authorization.accessToken,
       ));
+      return (api: api, issue: null);
+    } on GoogleSignInException catch (e) {
+      return (
+        api: null,
+        issue: e.code == GoogleSignInExceptionCode.canceled
+            ? DriveAuthIssue.declined
+            : DriveAuthIssue.failed,
+      );
     } catch (_) {
-      return null;
+      return (api: null, issue: DriveAuthIssue.failed);
     }
   }
 

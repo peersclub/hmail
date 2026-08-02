@@ -1,16 +1,21 @@
-/// Backup & Restore — the "your insights are safe" surface.
+/// Backup & Restore — the "your knowledge is safe" surface.
 ///
-/// Modelled on the WhatsApp backup flow: one place that shows when you last
-/// backed up, lets you back up now, choose iCloud or Google Drive, set a
-/// frequency, and restore onto a fresh install. What travels is the AI-earned
-/// knowledge and computed insights — never your mail, which stays in Gmail.
+/// Journey rules this screen lives by:
+///  1. Progress, success, and failure render *on the control the user tapped*
+///     — an inline line right under Back Up Now / Restore. Never a footnote
+///     somewhere else, never a toast over the buttons.
+///  2. Every failure names its cause and its recovery (the messages come from
+///     the target layer, which maps Google's errors to human ones).
+///  3. Preconditions become steps, not failures: demo mode shows the path to
+///     a real account instead of letting a doomed backup be attempted.
+///  4. The first backup sets expectations: Google will ask once for a hidden
+///     app-only folder — the screen says so before the sheet appears.
 library;
 
 import 'package:flutter/cupertino.dart';
 import 'package:provider/provider.dart';
 
 import '../../core/palette.dart';
-import '../../data/backup/backup_service.dart';
 import '../../domain/backup_prefs.dart';
 import '../../state/app_controller.dart';
 import '../glass/glass.dart';
@@ -30,6 +35,7 @@ class _BackupScreenState extends State<BackupScreen> {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _probe();
+      // Silent — shows what's already in the cloud without any prompt.
       context.read<AppController>().refreshRemoteMeta();
     });
   }
@@ -46,8 +52,6 @@ class _BackupScreenState extends State<BackupScreen> {
   @override
   Widget build(BuildContext context) {
     final app = context.watch<AppController>();
-    final prefs = app.backupPrefs;
-    final meta = app.remoteBackupMeta;
 
     return GlassBackground(
       child: CupertinoPageScaffold(
@@ -61,100 +65,15 @@ class _BackupScreenState extends State<BackupScreen> {
           child: ListView(
             padding: EdgeInsets.zero,
             children: [
-              const SizedBox(height: 6),
-              const GlassHeader(
-                eyebrow: 'Your knowledge, safe',
-                title: 'Backup',
-              ),
-
+              const SizedBox(height: 10),
               if (app.isDemo)
-                const _DemoNotice()
+                ..._demoJourney(context)
               else ...[
-                // Status card.
-                GlassSection(
-                  label: 'Latest backup',
-                  children: [
-                    GlassRow(
-                      icon: prefs.frequency == BackupFrequency.off
-                          ? CupertinoIcons.cloud
-                          : CupertinoIcons.cloud_fill,
-                      title: prefs.lastBackupAt == null
-                          ? 'Not backed up yet'
-                          : 'Backed up ${_when(prefs.lastBackupAt!)}',
-                      subtitle: _statusSubtitle(app),
-                      subtitleMaxLines: 2,
-                    ),
-                    _actionRow(
-                      context,
-                      icon: CupertinoIcons.cloud_upload_fill,
-                      label: app.backupBusy ? 'Backing up…' : 'Back Up Now',
-                      enabled: !app.backupBusy,
-                      onTap: () => _backUpNow(context),
-                    ),
-                  ],
-                ),
-
-                // Destination.
-                GlassSection(
-                  label: 'Back up to',
-                  children: [
-                    for (final t in app.backupTargets)
-                      GlassRow(
-                        icon: t.id == 'icloud'
-                            ? CupertinoIcons.cloud
-                            : CupertinoIcons.cloud_download,
-                        title: t.label,
-                        subtitle: _availabilitySubtitle(t.id),
-                        trailingCaption:
-                            prefs.destinationId == t.id ? 'Selected' : null,
-                        trailingCaptionColor: Palette.accent(context),
-                        onTap: () =>
-                            context.read<AppController>().setBackupDestination(t.id),
-                      ),
-                  ],
-                ),
-
-                // Frequency.
-                GlassSection(
-                  label: 'Auto backup',
-                  children: [
-                    GlassRow(
-                      icon: CupertinoIcons.clock,
-                      title: 'Back up automatically',
-                      subtitle: prefs.frequency == BackupFrequency.off
-                          ? 'Off — back up manually'
-                          : '${prefs.frequency.label}, after a sync',
-                      trailingCaption: 'Change',
-                      trailingCaptionColor: Palette.accent(context),
-                      onTap: () => _pickFrequency(context, app),
-                    ),
-                  ],
-                ),
-
-                // Restore.
-                GlassSection(
-                  label: 'Restore',
-                  children: [
-                    GlassRow(
-                      icon: CupertinoIcons.arrow_counterclockwise_circle,
-                      title: 'Restore from backup',
-                      subtitle: meta == null
-                          ? (app.remoteMetaChecked
-                              ? 'No backup found in ${app.backupDestinationLabel}'
-                              : 'Checking ${app.backupDestinationLabel}…')
-                          : 'From ${meta.deviceLabel} · ${_when(meta.createdAt)}',
-                      subtitleMaxLines: 2,
-                      onTap: meta == null || app.backupBusy
-                          ? null
-                          : () => _restore(context),
-                    ),
-                  ],
-                ),
-
-                if (app.backupError != null)
-                  Footnote(app.backupError!),
+                _backupSection(context, app),
+                _destinationSection(context, app),
+                _frequencySection(context, app),
+                _restoreSection(context, app),
               ],
-
               const Footnote(
                 'Backups hold only NoMail\'s insights and learned knowledge — '
                 'never your mail. Google Drive backups live in a hidden '
@@ -168,77 +87,240 @@ class _BackupScreenState extends State<BackupScreen> {
     );
   }
 
-  String _statusSubtitle(AppController app) {
-    final meta = app.remoteBackupMeta;
-    final dest = app.backupDestinationLabel;
-    if (meta == null) return 'Destination: $dest';
-    return '$dest · ${meta.deviceLabel} · ${_size(meta.sizeBytes)}';
-  }
+  // ── Demo: show the path, not a dead end ─────────────────────────────────
 
-  String _availabilitySubtitle(String id) {
-    final ok = _available[id];
-    if (ok == null) return 'Checking…';
-    if (ok) return 'Ready';
-    return id == 'icloud'
-        ? 'Turn on iCloud for NoMail in Settings'
-        : 'Sign in to Google to enable';
-  }
-
-  Widget _actionRow(
-    BuildContext context, {
-    required IconData icon,
-    required String label,
-    required bool enabled,
-    required VoidCallback onTap,
-  }) {
-    final tint = enabled ? Palette.accent(context) : Palette.secondaryLabel(context);
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTap: enabled ? onTap : null,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
-        child: Row(
+  List<Widget> _demoJourney(BuildContext context) => [
+        GlassSection(
           children: [
-            Icon(icon, size: 20, color: tint),
-            const SizedBox(width: 14),
-            Text(
-              label,
-              style: TextStyle(
-                fontSize: 17,
-                fontWeight: FontWeight.w600,
-                letterSpacing: -0.4,
-                color: tint,
-              ),
+            const GlassRow(
+              icon: CupertinoIcons.cloud,
+              title: 'Backup protects your insights',
+              subtitle: 'Everything NoMail learns moves with you to a new '
+                  'phone — bills, deliveries, and its learned knowledge.',
+              subtitleMaxLines: 3,
+            ),
+            const GlassRow(
+              icon: CupertinoIcons.person_crop_circle_badge_exclam,
+              title: 'Demo data isn\'t backed up',
+              subtitle: 'You\'re exploring with sample data. Connect your '
+                  'Google account to back up for real.',
+              subtitleMaxLines: 3,
+            ),
+            _actionRow(
+              context,
+              icon: CupertinoIcons.arrow_right_circle_fill,
+              label: 'Exit Demo & Sign In',
+              busy: false,
+              enabled: true,
+              onTap: () {
+                final app = context.read<AppController>();
+                Navigator.of(context).pop();
+                app.signOut(); // demo exit → sign-in screen
+              },
             ),
           ],
         ),
-      ),
+      ];
+
+  // ── Backup: status + action + inline result, one card ───────────────────
+
+  Widget _backupSection(BuildContext context, AppController app) {
+    final prefs = app.backupPrefs;
+    final meta = app.remoteBackupMeta;
+    final busy = app.backupActivity == BackupActivity.backingUp;
+    final never = prefs.lastBackupAt == null;
+
+    final String subtitle;
+    if (never) {
+      subtitle = 'Keeps your insights and NoMail\'s learned knowledge safe '
+          'if you lose or switch phones.';
+    } else {
+      subtitle = [
+        app.backupDestinationLabel,
+        if (meta != null) meta.deviceLabel,
+        if (meta != null) _size(meta.sizeBytes),
+      ].join(' · ');
+    }
+
+    return GlassSection(
+      label: 'Latest backup',
+      children: [
+        GlassRow(
+          icon: never ? CupertinoIcons.cloud : CupertinoIcons.cloud_fill,
+          title: never
+              ? 'Not backed up yet'
+              : 'Backed up ${_when(prefs.lastBackupAt!)}',
+          subtitle: subtitle,
+          subtitleMaxLines: 3,
+        ),
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            _actionRow(
+              context,
+              icon: CupertinoIcons.cloud_upload_fill,
+              label: busy ? 'Backing up…' : 'Back Up Now',
+              busy: busy,
+              enabled: !app.backupBusy,
+              onTap: () => context.read<AppController>().backUpNow(),
+            ),
+            ..._resultLines(
+              context,
+              app,
+              scope: BackupErrorScope.backup,
+              // Set the consent expectation before Google's sheet appears.
+              hint: never && !busy
+                  ? 'Google will ask once to let NoMail use its own private '
+                      'folder — nothing else in your Drive.'
+                  : null,
+            ),
+          ],
+        ),
+      ],
     );
   }
 
-  Future<void> _backUpNow(BuildContext context) async {
-    final app = context.read<AppController>();
-    final ok = await app.backUpNow();
-    if (!context.mounted) return;
-    if (ok) {
-      _toast(context, 'Backed up', 'Your insights and knowledge are saved to '
-          '${app.backupDestinationLabel}.');
-    }
-    // Failure surfaces via the inline backupError footnote.
+  // ── Destination ──────────────────────────────────────────────────────────
+
+  Widget _destinationSection(BuildContext context, AppController app) {
+    final selected = app.backupPrefs.destinationId;
+    return GlassSection(
+      label: 'Back up to',
+      children: [
+        for (final t in app.backupTargets)
+          _destinationRow(context, app, id: t.id, label: t.label,
+              selected: selected == t.id),
+      ],
+    );
   }
 
-  Future<void> _restore(BuildContext context) async {
-    final app = context.read<AppController>();
-    final meta = app.remoteBackupMeta;
-    if (meta == null) return;
+  Widget _destinationRow(
+    BuildContext context,
+    AppController app, {
+    required String id,
+    required String label,
+    required bool selected,
+  }) {
+    final ok = _available[id];
+    final isICloud = id == 'icloud';
 
+    final String subtitle;
+    if (ok == null) {
+      subtitle = 'Checking…';
+    } else if (isICloud && !ok) {
+      // Honest: there is no switch the user can flip for this build.
+      subtitle = 'Not available in this build yet';
+    } else if (!ok) {
+      subtitle = 'Connect a Google account to enable';
+    } else {
+      subtitle = isICloud
+          ? 'Stored in your iCloud'
+          : 'Hidden app-only folder in your Drive';
+    }
+
+    final selectable = ok == true && !app.backupBusy;
+    return GlassRow(
+      icon: isICloud ? CupertinoIcons.cloud : CupertinoIcons.cloud_download,
+      iconTint: ok == false ? Palette.secondaryLabel(context) : null,
+      title: label,
+      subtitle: subtitle,
+      trailing: selected ? '✓' : null,
+      onTap: selectable
+          ? () => context.read<AppController>().setBackupDestination(id)
+          : null,
+    );
+  }
+
+  // ── Frequency ────────────────────────────────────────────────────────────
+
+  Widget _frequencySection(BuildContext context, AppController app) {
+    final freq = app.backupPrefs.frequency;
+    return GlassSection(
+      label: 'Auto backup',
+      children: [
+        GlassRow(
+          icon: CupertinoIcons.clock,
+          title: 'Back up automatically',
+          subtitle: freq.interval == null
+              ? 'Off — back up manually'
+              : '${freq.label} · runs after a sync once due',
+          trailingCaption: 'Change',
+          trailingCaptionColor: Palette.accent(context),
+          onTap: app.backupBusy ? null : () => _pickFrequency(context, app),
+        ),
+      ],
+    );
+  }
+
+  // ── Restore: check → confirm → apply, all visible ────────────────────────
+
+  Widget _restoreSection(BuildContext context, AppController app) {
+    final meta = app.remoteBackupMeta;
+    final checking = app.backupActivity == BackupActivity.checking;
+    final restoring = app.backupActivity == BackupActivity.restoring;
+
+    final String label;
+    if (checking) {
+      label = 'Checking ${app.backupDestinationLabel}…';
+    } else if (restoring) {
+      label = 'Restoring…';
+    } else {
+      label = 'Restore from backup';
+    }
+
+    final String subtitle;
+    if (meta != null) {
+      subtitle = 'From ${meta.deviceLabel} · ${_when(meta.createdAt)}'
+          '${meta.insightCount > 0 ? ' · ${meta.insightCount} insights' : ''}';
+    } else {
+      subtitle =
+          'Fetches your latest backup from ${app.backupDestinationLabel}';
+    }
+
+    return GlassSection(
+      label: 'Restore',
+      children: [
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            GlassRow(
+              icon: CupertinoIcons.arrow_counterclockwise_circle,
+              title: label,
+              subtitle: subtitle,
+              subtitleMaxLines: 2,
+              onTap: app.backupBusy ? null : () => _restoreFlow(context),
+            ),
+            if (checking || restoring)
+              const Padding(
+                padding: EdgeInsets.only(bottom: 12),
+                child: CupertinoActivityIndicator(),
+              ),
+            ..._resultLines(context, app, scope: BackupErrorScope.restore),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Future<void> _restoreFlow(BuildContext context) async {
+    final app = context.read<AppController>();
+    // Step 1: fetch (may show Google's consent sheet — the user asked).
+    final meta = await app.prepareRestore();
+    if (meta == null || !context.mounted) return; // error line already shown
+
+    // Step 2: confirm with the backup's real contents — a destructive act
+    // deserves a modal, and the user deserves to know what they're applying.
     final confirmed = await showCupertinoDialog<bool>(
       context: context,
       builder: (dialogContext) => CupertinoAlertDialog(
-        title: const Text('Restore from backup?'),
+        title: const Text('Restore this backup?'),
         content: Text(
-          'This replaces the insights and learned knowledge on this device '
-          'with the backup from ${meta.deviceLabel} (${_when(meta.createdAt)}).',
+          '\n${meta.deviceLabel} · ${_when(meta.createdAt)}\n'
+          '${meta.insightCount} insights'
+          '${meta.learnedTypeCount > 0 ? ' · ${meta.learnedTypeCount} learned types' : ''}'
+          ' · ${_size(meta.sizeBytes)}\n\n'
+          'This replaces the insights and learned knowledge currently on '
+          'this device.',
         ),
         actions: [
           CupertinoDialogAction(
@@ -253,20 +335,112 @@ class _BackupScreenState extends State<BackupScreen> {
         ],
       ),
     );
-    if (confirmed != true || !context.mounted) return;
-
-    final outcome = await app.restoreFromBackup();
-    if (!context.mounted || outcome == null) return;
-    _toast(context, 'Restored', _restoreSummary(outcome));
+    if (!context.mounted) return;
+    if (confirmed != true) {
+      app.cancelRestore();
+      return;
+    }
+    // Step 3: apply — result renders inline under this row.
+    await app.confirmRestore();
   }
 
-  String _restoreSummary(RestoreOutcome o) {
-    final parts = <String>[
-      '${o.insightCount} insight${o.insightCount == 1 ? '' : 's'}',
-      if (o.learnedTypeCount > 0)
-        '${o.learnedTypeCount} learned type${o.learnedTypeCount == 1 ? '' : 's'}',
-    ];
-    return 'Restored ${parts.join(' and ')}.';
+  // ── Shared pieces ────────────────────────────────────────────────────────
+
+  /// Inline result directly under an action: the error or success for [scope],
+  /// or a quiet expectation-setting hint when there's nothing to report.
+  List<Widget> _resultLines(
+    BuildContext context,
+    AppController app, {
+    required BackupErrorScope scope,
+    String? hint,
+  }) {
+    final error = app.backupErrorScope == scope ? app.backupError : null;
+    final notice = app.backupNoticeScope == scope ? app.backupNotice : null;
+    if (error != null) {
+      return [
+        _inlineLine(context,
+            icon: CupertinoIcons.exclamationmark_circle_fill,
+            text: error,
+            color: Palette.destructive(context)),
+      ];
+    }
+    if (notice != null) {
+      return [
+        _inlineLine(context,
+            icon: CupertinoIcons.checkmark_circle_fill,
+            text: notice,
+            color: Palette.accent(context)),
+      ];
+    }
+    if (hint != null) {
+      return [
+        _inlineLine(context,
+            icon: CupertinoIcons.info_circle,
+            text: hint,
+            color: Palette.secondaryLabel(context)),
+      ];
+    }
+    return const [];
+  }
+
+  Widget _inlineLine(BuildContext context,
+      {required IconData icon, required String text, required Color color}) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(18, 0, 18, 12),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.only(top: 1.5),
+            child: Icon(icon, size: 14, color: color),
+          ),
+          const SizedBox(width: 7),
+          Expanded(
+            child: Text(
+              text,
+              style: TextStyle(fontSize: 13, height: 1.35, color: color),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _actionRow(
+    BuildContext context, {
+    required IconData icon,
+    required String label,
+    required bool busy,
+    required bool enabled,
+    required VoidCallback onTap,
+  }) {
+    final tint =
+        enabled ? Palette.accent(context) : Palette.secondaryLabel(context);
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: enabled && !busy ? onTap : null,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+        child: Row(
+          children: [
+            if (busy)
+              const CupertinoActivityIndicator(radius: 9)
+            else
+              Icon(icon, size: 20, color: tint),
+            const SizedBox(width: 14),
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 17,
+                fontWeight: FontWeight.w600,
+                letterSpacing: -0.4,
+                color: tint,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   Future<void> _pickFrequency(BuildContext context, AppController app) async {
@@ -295,23 +469,6 @@ class _BackupScreenState extends State<BackupScreen> {
     await context.read<AppController>().setBackupFrequency(chosen);
   }
 
-  void _toast(BuildContext context, String title, String message) {
-    showCupertinoDialog<void>(
-      context: context,
-      builder: (dialogContext) => CupertinoAlertDialog(
-        title: Text(title),
-        content: Text(message),
-        actions: [
-          CupertinoDialogAction(
-            isDefaultAction: true,
-            onPressed: () => Navigator.pop(dialogContext),
-            child: const Text('Done'),
-          ),
-        ],
-      ),
-    );
-  }
-
   static const _months = [
     'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
     'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
@@ -329,23 +486,5 @@ class _BackupScreenState extends State<BackupScreen> {
     if (bytes < 1024) return '$bytes B';
     if (bytes < 1024 * 1024) return '${(bytes / 1024).toStringAsFixed(0)} KB';
     return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
-  }
-}
-
-class _DemoNotice extends StatelessWidget {
-  const _DemoNotice();
-
-  @override
-  Widget build(BuildContext context) {
-    return const GlassSection(
-      children: [
-        GlassRow(
-          icon: CupertinoIcons.info_circle,
-          title: 'Backup needs a real account',
-          subtitle: 'Sign in with Google to back up to iCloud or Drive.',
-          subtitleMaxLines: 2,
-        ),
-      ],
-    );
   }
 }

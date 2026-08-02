@@ -37,6 +37,9 @@ class ICloudBackupTarget implements BackupTarget {
   }
 
   @override
+  Future<bool> isAuthorized() => isAvailable();
+
+  @override
   Future<BackupMeta?> latest() async {
     final bundle = await download();
     return bundle == null ? null : BackupMeta.of(bundle);

@@ -19,7 +19,7 @@ Future<void> showInsightActions(
 }) async {
   if (actions.isEmpty) return;
   if (actions.length == 1) {
-    await openAction(actions.single);
+    await _launchWithFallback(actions.single, actions);
     return;
   }
 
@@ -33,7 +33,7 @@ Future<void> showInsightActions(
           CupertinoActionSheetAction(
             onPressed: () {
               Navigator.pop(sheetContext);
-              openAction(action);
+              _launchWithFallback(action, actions);
             },
             child: Text(action.label),
           ),
@@ -45,4 +45,22 @@ Future<void> showInsightActions(
       ),
     ),
   );
+}
+
+/// Nothing on the device could handle the deep link (a upi:// intent with no
+/// UPI app, a zoom link with no Zoom)? Fall back to the insight's own email —
+/// the source of truth, and a URL that always opens. A tap must never end in
+/// silence.
+Future<void> _launchWithFallback(
+  InsightAction action,
+  List<InsightAction> all,
+) async {
+  if (await openAction(action)) return;
+  if (action.kind == ActionKind.openEmail) return; // already the fallback
+  for (final candidate in all) {
+    if (candidate.kind == ActionKind.openEmail) {
+      await openAction(candidate);
+      return;
+    }
+  }
 }

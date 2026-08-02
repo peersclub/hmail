@@ -140,6 +140,21 @@ class _TimelineScreenState extends State<TimelineScreen> {
                           if (i.domain == domain) i,
                       ],
                     )
+                else if (shown.isEmpty)
+                  // A selected chip whose domain has emptied out: name what
+                  // belongs here instead of rendering a blank list.
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(44, 56, 44, 0),
+                    child: Text(
+                      _domainEmptyLine(activeFilter),
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        fontSize: 15,
+                        height: 1.4,
+                        color: Palette.secondaryLabel(context),
+                      ),
+                    ),
+                  )
                 else
                   Padding(
                     padding: const EdgeInsets.only(top: 20),
@@ -154,6 +169,27 @@ class _TimelineScreenState extends State<TimelineScreen> {
     );
   }
 }
+
+/// One short line per domain for the filtered-empty state — says what the
+/// domain collects so an empty filter still teaches what belongs there.
+String _domainEmptyLine(InsightDomain domain) => switch (domain) {
+      InsightDomain.security =>
+        'No security alerts right now — sign-in warnings and account alerts appear here.',
+      InsightDomain.money =>
+        'No money items right now — bills, renewals and refunds appear here.',
+      InsightDomain.commerce =>
+        'No deliveries right now — parcels and return windows appear here.',
+      InsightDomain.travel =>
+        'No trips right now — flights, trains and hotel bookings appear here.',
+      InsightDomain.work =>
+        'No work items right now — meetings and calendar invites appear here.',
+      InsightDomain.content =>
+        'No reads right now — newsletters and articles appear here.',
+      InsightDomain.personal =>
+        'Nothing personal right now — invitations and personal follow-ups appear here.',
+      InsightDomain.government =>
+        'No identity items right now — government and ID paperwork appears here.',
+    };
 
 /// One glass section of insight rows. Unlabeled when a specific filter is
 /// active (the chip already names the domain), labeled when grouping All.

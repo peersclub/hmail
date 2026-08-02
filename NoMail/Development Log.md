@@ -1,5 +1,29 @@
 # Development Log
 
+## 2026-08-02 — App-wide user-journey overhaul
+
+Victor's verdict on the first backup UX ("I click back up… somewhere in the bottom shows Google drive backup failed") triggered a journey pass over the whole app: **feedback must render on the control the user tapped, name its cause, and offer the recovery.**
+
+**Backup journey (rewritten).**
+- `GmailAuth.driveApi` now returns `(api, issue)` — notSignedIn / notGranted / declined / failed — and `DriveBackupTarget` maps every failure to a cause+recovery message ("Permission was declined… tap again and choose Allow", 403 accessNotConfigured → "enable the Drive API in Cloud Console", 401 → re-sign-in, network → check connection). Generic "backup failed" is banned.
+- Controller: `BackupActivity` (idle/backingUp/checking/restoring) + **scoped** error/notice (`BackupErrorScope.backup|restore`) so results render inline directly under Back Up Now or Restore. Success is an in-flow ✓ line (no modal). First-backup hint pre-announces Google's one-time consent sheet.
+- Restore is staged: tap → fetch (interactive) → confirm dialog showing device/date/size/**counts** → apply → inline "Restored N insights". `prepareRestore`/`confirmRestore`/`cancelRestore`.
+- Auto-backup is now strictly silent: runs only when the target `isAuthorized()` (no surprise consent sheets) and swallows failures.
+- Demo mode shows the *path* (Exit Demo & Sign In action) instead of a dead-end notice. iCloud row honestly says "Not available in this build yet" (personal-team limit) instead of pointing at a nonexistent iOS setting.
+
+**App-wide fixes from a 10-point UX audit** (agent-audited, files:lines in the audit record):
+1. Sync/account errors now render inside Settings under the row that failed (destructive text + retry), not only as a gray footnote on Today.
+2. Silent action failures fixed: Pay/Track/Join now fall back to the insight's email when no app can handle the deep link (`_launchWithFallback` in action_sheet.dart).
+3. Sign-in flash fixed: `signIn()` keeps phase `signedOut` during OAuth (new `authenticating` flag) so the sign-in screen stays mounted with "Connecting to Google…" — no more empty-shell flash + bounce on cancel.
+4. Sign Out / Exit Demo now confirm via action sheet (it clears the local cache; account-removal already confirmed — inconsistency removed).
+5. Rescan row no longer promises "with AI" when AI is off/unkeyed.
+
+**Tab screens (parallel agent).** Sign-in: in-place progress + inline error + honest "Explore with Sample Data". Today: scanning state with live `activityLine`, error row with Try again, empty state with a real Scan button (not just pull-to-refresh prose). Timeline: per-domain empty lines. Money: syncing narration + scan CTA. New shared `lib/ui/widgets/journey_states.dart` (BusyLine, ScanActionButton).
+
+**Remaining audit items (logged, not yet done):** Money/Timeline header busy badge (#3), AI key entry or honest copy for shipped builds (#4), Timeline filter-vanish note (#8), GlassEmptyState action slot (#9).
+
+297 tests pass (backup journey + Drive message mapping + controller state tests added); analyze clean; installed to iPhone.
+
 ## 2026-08-02 — WhatsApp-style backup & restore (iCloud + Google Drive)
 
 Full backup system for NoMail's knowledge + insights. See **[[Backup & Restore]]** for architecture and the two enablement steps.

@@ -11,6 +11,7 @@ import '../../state/app_controller.dart';
 import '../action_sheet.dart';
 import '../format.dart';
 import '../glass/glass.dart';
+import '../widgets/journey_states.dart';
 
 /// Money tab: recurring spend hero with a monochrome share bar, then
 /// subscriptions and upcoming bills. Scroll content only — the shell owns
@@ -20,7 +21,8 @@ class MoneyScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final snapshot = context.watch<AppController>().snapshot;
+    final app = context.watch<AppController>();
+    final snapshot = app.snapshot;
 
     final currency = snapshot.dominantCurrency;
     final dominantSubs = snapshot.subscriptions
@@ -43,14 +45,23 @@ class MoneyScreen extends StatelessWidget {
       children: [
         SizedBox(height: MediaQuery.paddingOf(context).top + 6),
         const GlassHeader(eyebrow: 'Recurring & bills', title: 'Money'),
-        if (isEmpty)
+        if (isEmpty) ...[
           const GlassEmptyState(
             icon: CupertinoIcons.creditcard,
             title: 'No Money Insights Yet',
             caption:
-                'Subscriptions and bills found in your email will appear here.',
-          )
-        else ...[
+                'Bills due, subscription renewals and refunds found in your email appear here.',
+          ),
+          // Journey states: narrate a running scan; offer the scan when one
+          // has never run; stay quiet when a scan simply found no money.
+          if (app.phase == AppPhase.syncing)
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 44),
+              child: BusyLine(app.activityLine),
+            )
+          else if (snapshot.lastSyncedAt == null && !app.isDemo)
+            const ScanActionButton(),
+        ] else ...[
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 20),
             child: _Hero(

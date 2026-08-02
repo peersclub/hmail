@@ -30,23 +30,38 @@ class SettingsScreen extends StatelessWidget {
         : '${formatDay(app.snapshot.lastSyncedAt!)} · '
             '${app.snapshot.emailsScanned} emails scanned';
 
+    // An error renders under the section whose action produced it — account
+    // errors under Accounts, sync errors under Data — never off-screen.
+    final err = app.error;
+    final isAuthError = err != null &&
+        (err.contains('sign-in') || err.contains('account'));
+
     return ListView(
       padding: EdgeInsets.zero,
       children: [
         SizedBox(height: MediaQuery.paddingOf(context).top + 6),
         const GlassHeader(eyebrow: 'Account & privacy', title: 'Settings'),
         _accountsSection(context, app),
+        if (isAuthError) _errorLine(context, err),
         GlassSection(
           label: 'Data',
           children: [
             if (syncing)
               _syncingRow(context, app.stage.label)
             else
-              GlassRow(
-                icon: CupertinoIcons.arrow_2_circlepath,
-                title: 'Sync Now',
-                subtitle: syncSubtitle,
-                onTap: () => context.read<AppController>().sync(),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  GlassRow(
+                    icon: CupertinoIcons.arrow_2_circlepath,
+                    title: 'Sync Now',
+                    subtitle: syncSubtitle,
+                    onTap: () => context.read<AppController>().sync(),
+                  ),
+                  // The failure lands right under the row that can retry it.
+                  if (err != null && !isAuthError)
+                    _inlineError(context, '$err Tap Sync Now to retry.'),
+                ],
               ),
             GlassRow(
               icon: CupertinoIcons.slider_horizontal_3,
@@ -104,10 +119,7 @@ class SettingsScreen extends StatelessWidget {
             GlassRow(
               icon: CupertinoIcons.cloud,
               title: 'Backup',
-              subtitle: app.backupPrefs.lastBackupAt == null
-                  ? 'Not backed up · ${app.backupPrefs.frequency.label}'
-                  : 'Last backup ${formatDay(app.backupPrefs.lastBackupAt!)} · '
-                      '${app.backupDestinationLabel}',
+              subtitle: _backupSubtitle(app),
               subtitleMaxLines: 2,
               onTap: () => _push(context, const BackupScreen()),
             ),
@@ -121,7 +133,10 @@ class SettingsScreen extends StatelessWidget {
               GlassRow(
                 icon: CupertinoIcons.wand_stars,
                 title: 'Rescan Everything',
-                subtitle: 'Clear stored insights and re-extract with AI',
+                // Don't promise an AI pass that won't run.
+                subtitle: app.settings.aiEnabled && app.aiLabel != 'off'
+                    ? 'Clear stored insights and re-extract with AI'
+                    : 'Clear stored insights and re-extract',
                 onTap: () => _confirmRescan(context),
               ),
           ],
@@ -134,7 +149,7 @@ class SettingsScreen extends StatelessWidget {
           children: [
             GestureDetector(
               behavior: HitTestBehavior.opaque,
-              onTap: () => context.read<AppController>().signOut(),
+              onTap: () => _confirmSignOut(context, app),
               child: Padding(
                 padding: const EdgeInsets.symmetric(vertical: 16),
                 child: Center(
@@ -160,6 +175,91 @@ class SettingsScreen extends StatelessWidget {
   static void _push(BuildContext context, Widget screen) {
     Navigator.of(context, rootNavigator: true)
         .push(CupertinoPageRoute<void>(builder: (_) => screen));
+  }
+
+  /// Backup row subtitle tells the user where they are in the journey, not
+  /// just a state dump.
+  static String _backupSubtitle(AppController app) {
+    if (app.isDemo) return 'Needs a real account';
+    final last = app.backupPrefs.lastBackupAt;
+    if (last == null) return 'Not set up yet';
+    final freq = app.backupPrefs.frequency;
+    return [
+      formatDay(last),
+      app.backupDestinationLabel,
+      if (freq.interval != null) freq.label,
+    ].join(' · ');
+  }
+
+  /// Inline error INSIDE a glass card, directly under the row that failed.
+  Widget _inlineError(BuildContext context, String message) {
+    final color = Palette.destructive(context);
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(18, 0, 18, 12),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.only(top: 1.5),
+            child: Icon(CupertinoIcons.exclamationmark_circle_fill,
+                size: 14, color: color),
+          ),
+          const SizedBox(width: 7),
+          Expanded(
+            child: Text(
+              message,
+              style: TextStyle(fontSize: 13, height: 1.35, color: color),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Standalone error line between sections (for section-level failures like
+  /// account add/remove, whose section builds its rows dynamically).
+  Widget _errorLine(BuildContext context, String message) {
+    final color = Palette.destructive(context);
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(34, 0, 34, 10),
+      child: Text(
+        message,
+        style: TextStyle(fontSize: 13, height: 1.35, color: color),
+      ),
+    );
+  }
+
+  /// Signing out clears the local insight cache — that deserves the same
+  /// confirm the less-destructive account removal already gets.
+  Future<void> _confirmSignOut(BuildContext context, AppController app) async {
+    final isDemo = app.isDemo;
+    final confirmed = await showCupertinoModalPopup<bool>(
+      context: context,
+      builder: (sheetContext) => CupertinoActionSheet(
+        title: Text(isDemo ? 'Exit demo?' : 'Sign out?'),
+        message: Text(
+          isDemo
+              ? 'The sample data is cleared and you return to sign-in.'
+              : 'Insights stored on this device are cleared. Your mail is '
+                  'untouched, and a backup can restore your insights later.',
+        ),
+        actions: [
+          CupertinoActionSheetAction(
+            isDestructiveAction: true,
+            onPressed: () => Navigator.pop(sheetContext, true),
+            child: Text(isDemo ? 'Exit Demo' : 'Sign Out'),
+          ),
+        ],
+        cancelButton: CupertinoActionSheetAction(
+          isDefaultAction: true,
+          onPressed: () => Navigator.pop(sheetContext, false),
+          child: const Text('Cancel'),
+        ),
+      ),
+    );
+    if (confirmed == true && context.mounted) {
+      await context.read<AppController>().signOut();
+    }
   }
 
   static String _hourLabel(int hour) {

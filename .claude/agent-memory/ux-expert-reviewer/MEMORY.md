@@ -1,2 +1,3 @@
 - [Timeline filter-chip review](review_timeline_filter_chips.md) — UXR-2026-08-02, score 6/10, approved with changes
-- [NoMail design-system conventions](convention_nomail_design_system.md) — monochrome ink rule, GlassSection labeled-vs-unlabeled spacing gap, "·" separator, alpha-stacking gotcha, 34pt chip house style
+- [Full-app journey audit](review_full_app_journeys.md) — UXR-2026-08-02, score 5/10, requires rework; root cause: `app.error` has only 2 render sites app-wide
+- [NoMail design-system conventions](convention_nomail_design_system.md) — monochrome ink, GlassSection spacing gap, "·" separator, alpha-stacking, 34pt chip style, app.error blind spot, GlassEmptyState has no CTA slot, openAction() bool unchecked

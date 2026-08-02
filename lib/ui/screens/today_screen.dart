@@ -8,10 +8,12 @@ import '../../core/palette.dart';
 import '../../domain/insight.dart';
 import '../../domain/insight_mapper.dart';
 import '../../domain/models.dart';
+import '../../domain/sync_report.dart';
 import '../../state/app_controller.dart';
 import '../format.dart';
 import '../glass/glass.dart';
 import '../insight_card.dart';
+import '../widgets/journey_states.dart';
 import 'processing_screen.dart';
 
 /// Today — the morning-glance screen. Brief, counts, and everything that
@@ -67,7 +69,12 @@ class TodayScreen extends StatelessWidget {
               if (app.isDemo)
                 const Footnote(
                     'Demo data — sign in with Google for your own insights.'),
-              if (app.phase == AppPhase.syncing) _activityLine(context, app),
+              if (app.error != null && app.phase != AppPhase.syncing)
+                _errorRow(context, app),
+              // With content on screen the slim card reports progress; when
+              // the snapshot is empty the scanning state below carries it.
+              if (app.phase == AppPhase.syncing && !snapshot.isEmpty)
+                _activityLine(context, app),
               if (app.showMoneyShot) _moneyShotCard(context, app),
               if (snapshot.brief != null)
                 _briefCard(context, snapshot.brief!,
@@ -87,15 +94,17 @@ class TodayScreen extends StatelessWidget {
                     for (final i in comingUp) InsightCard(insight: i),
                   ],
                 ),
-              if (snapshot.isEmpty)
-                GlassEmptyState(
+              if (snapshot.isEmpty && app.phase == AppPhase.syncing)
+                _scanningState(context, app)
+              else if (snapshot.isEmpty) ...[
+                const GlassEmptyState(
                   icon: CupertinoIcons.sparkles,
                   title: 'No Insights Yet',
-                  caption: app.phase == AppPhase.syncing
-                      ? 'Scanning your Gmail…'
-                      : 'Pull down to scan your Gmail for bills, subscriptions and deliveries.',
-                )
-              else if (attention.isEmpty && comingUp.isEmpty)
+                  caption:
+                      'Today gathers what matters from your Gmail — bills due, renewals, deliveries and a daily brief.',
+                ),
+                const ScanActionButton(),
+              ] else if (attention.isEmpty && comingUp.isEmpty)
                 GlassSection(
                   children: [
                     GlassRow(
@@ -110,7 +119,6 @@ class TodayScreen extends StatelessWidget {
               if (snapshot.lastSyncedAt != null)
                 Footnote(
                     'Synced ${formatDay(snapshot.lastSyncedAt!)} · ${snapshot.emailsScanned} emails scanned'),
-              if (app.error != null) Footnote(app.error!),
               const SizedBox(height: kDockClearance),
             ],
           ),
@@ -121,6 +129,103 @@ class TodayScreen extends StatelessWidget {
 
 
 
+
+  /// First-run scan over an empty snapshot: instead of a blank screen, a
+  /// centered state that narrates the live pipeline stage so the user
+  /// watches progress happen. Tapping opens the full pipeline view.
+  Widget _scanningState(BuildContext context, AppController app) {
+    // Before the pipeline reports a stage (e.g. while OAuth is still in
+    // flight) activityLine says "Not scanned yet" — misleading mid-journey,
+    // so name what is actually happening.
+    final detail = app.isDemo
+        ? 'Preparing sample data…'
+        : (app.stage == SyncStage.idle
+            ? 'Connecting to Google…'
+            : app.activityLine);
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: () => Navigator.of(context, rootNavigator: true).push(
+        CupertinoPageRoute<void>(builder: (_) => const ProcessingScreen()),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 60, horizontal: 44),
+        child: Column(
+          children: [
+            const CupertinoActivityIndicator(radius: 13),
+            const SizedBox(height: 18),
+            Text(
+              'Scanning your Gmail',
+              style: TextStyle(
+                fontSize: 19,
+                fontWeight: FontWeight.w700,
+                letterSpacing: -0.3,
+                color: Palette.label(context),
+              ),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              detail,
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: 15,
+                height: 1.4,
+                color: Palette.secondaryLabel(context),
+              ),
+            ),
+            const SizedBox(height: 10),
+            Text(
+              'Tap to watch the pipeline',
+              style: TextStyle(
+                fontSize: 13,
+                color: Palette.tertiaryLabel(context),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// Sync failure, announced in flow near the top with the recovery beside
+  /// it. Red is text only — the card itself stays neutral glass.
+  Widget _errorRow(BuildContext context, AppController app) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
+      child: GlassCard(
+        padding: const EdgeInsets.fromLTRB(18, 10, 8, 10),
+        child: Row(
+          children: [
+            Expanded(
+              child: Text(
+                app.error!,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: 15,
+                  height: 1.3,
+                  color: Palette.destructive(context),
+                ),
+              ),
+            ),
+            const SizedBox(width: 6),
+            CupertinoButton(
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+              onPressed: () => context.read<AppController>().sync(),
+              child: Text(
+                'Try again',
+                style: TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w600,
+                  color: Palette.label(context),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 
   /// A running scan is hundreds of requests and can take a while. Saying
   /// which one, in place, is the difference between "working" and "stuck".

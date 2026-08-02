@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import '../../core/palette.dart';
 import '../../state/app_controller.dart';
 import '../glass/glass.dart';
+import '../widgets/journey_states.dart';
 
 /// Standalone welcome screen: paints its own liquid-glass backdrop, feature
 /// rows in a glass card, fixed CTA block at the bottom.
@@ -13,7 +14,10 @@ class SignInScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final app = context.watch<AppController>();
-    final syncing = app.phase == AppPhase.syncing;
+    // The controller holds phase at signedOut while the OAuth sheet is up
+    // (so this screen stays mounted, no shell flash) and reports the in-
+    // flight state via [authenticating]. Both count as busy here.
+    final syncing = app.authenticating || app.phase == AppPhase.syncing;
 
     return CupertinoPageScaffold(
       backgroundColor: const Color(0x00000000),
@@ -89,18 +93,40 @@ class SignInScreen extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    if (app.error != null)
+                    // While authenticating the phase stays signedOut, so this
+                    // progress line remains visible under the OAuth sheet; the
+                    // router only swaps to the shell after sign-in succeeds.
+                    if (syncing)
                       Padding(
-                        padding: const EdgeInsets.only(bottom: 10),
+                        padding: const EdgeInsets.only(bottom: 12),
+                        child: BusyLine(app.isDemo
+                            ? 'Preparing sample data…'
+                            : 'Connecting to Google…'),
+                      )
+                    else if (app.error != null) ...[
+                      Text(
+                        app.error!,
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          fontSize: 13,
+                          height: 1.35,
+                          color: Palette.destructive(context),
+                        ),
+                      ),
+                      CupertinoButton(
+                        padding: const EdgeInsets.symmetric(vertical: 6),
+                        onPressed: () =>
+                            context.read<AppController>().signIn(),
                         child: Text(
-                          app.error!,
-                          textAlign: TextAlign.center,
+                          'Try again',
                           style: TextStyle(
-                            fontSize: 13,
-                            color: Palette.destructive(context),
+                            fontSize: 15,
+                            fontWeight: FontWeight.w600,
+                            color: Palette.label(context),
                           ),
                         ),
                       ),
+                    ],
                     AccentButton(
                       'Continue with Google',
                       onPressed: syncing
@@ -109,9 +135,10 @@ class SignInScreen extends StatelessWidget {
                     ),
                     const SizedBox(height: 10),
                     QuietButton(
-                      'Try the Demo',
-                      onPressed: () =>
-                          context.read<AppController>().enterDemo(),
+                      'Explore with Sample Data',
+                      onPressed: syncing
+                          ? null
+                          : () => context.read<AppController>().enterDemo(),
                     ),
                     const SizedBox(height: 12),
                     Text(
