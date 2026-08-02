@@ -1,0 +1,2 @@
+- [Timeline filter-chip review](review_timeline_filter_chips.md) — UXR-2026-08-02, score 6/10, approved with changes
+- [NoMail design-system conventions](convention_nomail_design_system.md) — monochrome ink rule, GlassSection labeled-vs-unlabeled spacing gap, "·" separator, alpha-stacking gotcha, 34pt chip house style

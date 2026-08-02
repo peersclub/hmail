@@ -388,6 +388,80 @@ class FeedItem {
       );
 }
 
+enum TravelKind { flight, train, hotel, bus, cab }
+
+/// A trip surfaced from email — a flight, hotel, train, or booking. The
+/// pressing moment is departure/check-in, which the ranker reads off
+/// [departure]; check-in for flights opens ~48h before, so a flight inside
+/// that window naturally rises on Today.
+class TravelItem {
+  final TravelKind kind;
+
+  /// Airline, hotel, or booking provider — "IndiGo", "MakeMyTrip".
+  final String provider;
+
+  /// Route or place — "BLR → DEL", a hotel name. Null if unparsed.
+  final String? route;
+
+  /// Booking reference / PNR.
+  final String? code;
+
+  /// Departure or check-in moment; null when the email carried no date.
+  final DateTime? departure;
+
+  final DateTime lastSeen;
+  final String sourceEmailId;
+  final String? manageUrl;
+
+  const TravelItem({
+    required this.kind,
+    required this.provider,
+    this.route,
+    this.code,
+    this.departure,
+    required this.lastSeen,
+    required this.sourceEmailId,
+    this.manageUrl,
+  });
+
+  /// Past trips fall off after a fortnight.
+  bool get isStale =>
+      (departure ?? lastSeen)
+          .isBefore(DateTime.now().subtract(const Duration(days: 14)));
+
+  String get dedupeKey => code != null && code!.isNotEmpty
+      ? '${provider.toLowerCase()}|${code!.toLowerCase()}'
+      : '${provider.toLowerCase()}|${route?.toLowerCase() ?? ''}|'
+          '${departure?.toIso8601String() ?? lastSeen.toIso8601String().substring(0, 10)}';
+
+  Map<String, dynamic> toJson() => {
+        'kind': kind.name,
+        'provider': provider,
+        'route': route,
+        'code': code,
+        'departure': departure?.toIso8601String(),
+        'lastSeen': lastSeen.toIso8601String(),
+        'sourceEmailId': sourceEmailId,
+        'manageUrl': manageUrl,
+      };
+
+  factory TravelItem.fromJson(Map<String, dynamic> json) => TravelItem(
+        kind: TravelKind.values.firstWhere(
+          (k) => k.name == json['kind'],
+          orElse: () => TravelKind.flight,
+        ),
+        provider: json['provider'] as String,
+        route: json['route'] as String?,
+        code: json['code'] as String?,
+        departure: json['departure'] == null
+            ? null
+            : DateTime.parse(json['departure'] as String),
+        lastSeen: DateTime.parse(json['lastSeen'] as String),
+        sourceEmailId: json['sourceEmailId'] as String,
+        manageUrl: json['manageUrl'] as String?,
+      );
+}
+
 /// Something the user should look at that isn't money or a package —
 /// produced by the AI pass over emails the rule extractors didn't claim.
 class AttentionItem {
@@ -455,6 +529,7 @@ class InsightSnapshot {
   final List<Delivery> deliveries;
   final List<EventItem> events;
   final List<FeedItem> feed;
+  final List<TravelItem> travel;
   final List<AttentionItem> attention;
   final DailyBrief? brief;
   final DateTime? lastSyncedAt;
@@ -466,6 +541,7 @@ class InsightSnapshot {
     this.deliveries = const [],
     this.events = const [],
     this.feed = const [],
+    this.travel = const [],
     this.attention = const [],
     this.brief,
     this.lastSyncedAt,
@@ -478,6 +554,7 @@ class InsightSnapshot {
       deliveries.isEmpty &&
       events.isEmpty &&
       feed.isEmpty &&
+      travel.isEmpty &&
       attention.isEmpty;
 
   /// Content from the last two weeks, newest first — the reading queue.
@@ -513,6 +590,11 @@ class InsightSnapshot {
   List<Delivery> get activeDeliveries =>
       deliveries.where((d) => d.isActive).toList();
 
+  List<TravelItem> get upcomingTravel =>
+      travel.where((t) => !t.isStale).toList()
+        ..sort((a, b) => (a.departure ?? a.lastSeen)
+            .compareTo(b.departure ?? b.lastSeen));
+
   /// Upcoming (non-cancelled, future) events, soonest first.
   List<EventItem> get upcomingEvents =>
       events.where((e) => e.isUpcoming).toList()
@@ -527,6 +609,7 @@ class InsightSnapshot {
     List<Delivery>? deliveries,
     List<EventItem>? events,
     List<FeedItem>? feed,
+    List<TravelItem>? travel,
     List<AttentionItem>? attention,
     DailyBrief? brief,
     DateTime? lastSyncedAt,
@@ -538,6 +621,7 @@ class InsightSnapshot {
         deliveries: deliveries ?? this.deliveries,
         events: events ?? this.events,
         feed: feed ?? this.feed,
+        travel: travel ?? this.travel,
         attention: attention ?? this.attention,
         brief: brief ?? this.brief,
         lastSyncedAt: lastSyncedAt ?? this.lastSyncedAt,
@@ -550,6 +634,7 @@ class InsightSnapshot {
         'deliveries': deliveries.map((d) => d.toJson()).toList(),
         'events': events.map((e) => e.toJson()).toList(),
         'feed': feed.map((f) => f.toJson()).toList(),
+        'travel': travel.map((t) => t.toJson()).toList(),
         'attention': attention.map((a) => a.toJson()).toList(),
         'brief': brief?.toJson(),
         'lastSyncedAt': lastSyncedAt?.toIso8601String(),
@@ -572,6 +657,9 @@ class InsightSnapshot {
             .toList(),
         feed: ((json['feed'] ?? []) as List)
             .map((e) => FeedItem.fromJson(e as Map<String, dynamic>))
+            .toList(),
+        travel: ((json['travel'] ?? []) as List)
+            .map((e) => TravelItem.fromJson(e as Map<String, dynamic>))
             .toList(),
         attention: ((json['attention'] ?? []) as List)
             .map((e) => AttentionItem.fromJson(e as Map<String, dynamic>))

@@ -21,7 +21,7 @@ void main() {
       expect(settings.briefHour, 8);
       expect(settings.scanReads, isTrue);
       // 5 Gmail queries x 25.
-      expect(settings.estimatedMaxEmails, 125);
+      expect(settings.estimatedMaxEmails, 150);
     });
 
     test('option lists match the values the UI offers', () {
@@ -110,7 +110,7 @@ void main() {
     test('all domains on counts money as two queries', () {
       expect(
         const ScanSettings(maxEmailsPerQuery: 50).estimatedMaxEmails,
-        250,
+        300,
       );
     });
 
@@ -120,6 +120,7 @@ void main() {
         scanMoney: false,
         scanEvents: false,
         scanReads: false,
+        scanTravel: false,
       );
       expect(settings.estimatedMaxEmails, 100);
     });
@@ -130,6 +131,7 @@ void main() {
         scanDeliveries: false,
         scanEvents: false,
         scanReads: false,
+        scanTravel: false,
       );
       expect(money.estimatedMaxEmails, 50);
 
@@ -138,6 +140,7 @@ void main() {
         scanDeliveries: false,
         scanEvents: false,
         scanReads: false,
+        scanTravel: false,
       );
       expect(nothing.estimatedMaxEmails, 0);
     });
@@ -147,7 +150,7 @@ void main() {
     test('all domains on with defaults', () {
       expect(
         const ScanSettings().describeScope,
-        'Money, packages, meetings and reads · up to 125 emails · 1 year of history',
+        'Money, packages, meetings, reads and trips · up to 150 emails · 1 year of history',
       );
     });
 
@@ -158,6 +161,7 @@ void main() {
         scanDeliveries: false,
         scanEvents: false,
         scanReads: false,
+        scanTravel: false,
       );
       expect(
         settings.describeScope,
@@ -170,6 +174,7 @@ void main() {
         historyDays: 90,
         scanMoney: false,
         scanReads: false,
+        scanTravel: false,
       );
       expect(
         settings.describeScope,
@@ -183,6 +188,7 @@ void main() {
         scanDeliveries: false,
         scanEvents: false,
         scanReads: false,
+        scanTravel: false,
       );
       expect(settings.describeScope, 'Nothing selected');
     });

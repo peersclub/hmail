@@ -79,6 +79,32 @@ List<Insight> snapshotToInsights(InsightSnapshot s) {
     ));
   }
 
+  for (final t in s.upcomingTravel) {
+    final ref = t.code == null ? null : 'Ref ${t.code}';
+    out.add(Insight(
+      id: 'travel:${t.sourceEmailId}',
+      domain: InsightDomain.travel,
+      title: t.route ?? t.provider,
+      subtitle: t.route != null
+          ? [t.provider, if (ref != null) ref].join(' · ')
+          : (ref ?? _travelLabel(t.kind)),
+      caption: t.departure == null ? null : formatDay(t.departure!),
+      anchorDate: t.departure,
+      icon: CupertinoIcons.airplane,
+      brandKey: t.provider,
+      weight: 65,
+      actions: [
+        if (t.manageUrl != null)
+          InsightAction(
+            label: 'Manage booking',
+            uri: Uri.parse(t.manageUrl!),
+            kind: ActionKind.openLink,
+          ),
+        openEmailAction(t.sourceEmailId),
+      ],
+    ));
+  }
+
   for (final f in s.recentFeed) {
     out.add(Insight(
       id: 'feed:${f.sourceEmailId}',
@@ -123,6 +149,14 @@ List<InsightDomain> presentDomains(List<Insight> insights) {
   final present = <InsightDomain>{for (final i in insights) i.domain};
   return InsightDomain.values.where(present.contains).toList();
 }
+
+String _travelLabel(TravelKind kind) => switch (kind) {
+      TravelKind.flight => 'Flight',
+      TravelKind.train => 'Train',
+      TravelKind.hotel => 'Hotel',
+      TravelKind.bus => 'Bus',
+      TravelKind.cab => 'Cab',
+    };
 
 String _deliveryStatus(Delivery d) => switch (d.status) {
       DeliveryStatus.outForDelivery => 'Out for delivery',

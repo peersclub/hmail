@@ -234,6 +234,7 @@ void main() {
   });
 
   feedTests();
+  travelTests();
 
   group('runExtractors', () {
     test('routes each email to exactly one bucket', () {
@@ -322,6 +323,72 @@ void feedTests() {
         )),
         isNull,
       );
+    });
+  });
+}
+
+void travelTests() {
+  EmailMeta e({String from = '', String subject = '', String body = ''}) =>
+      EmailMeta(
+          id: 't',
+          from: from,
+          subject: subject,
+          snippet: '',
+          body: body,
+          date: DateTime(2026, 8, 1));
+
+  group('extractTravel', () {
+    test('an IndiGo e-ticket becomes a flight with route and PNR', () {
+      final t = extractTravel(e(
+        from: 'IndiGo <noreply@goindigo.in>',
+        subject: 'Your e-ticket, PNR X4K9Q2',
+        body: 'Booking confirmed. PNR: X4K9Q2. Departure BLR → DEL.',
+      ));
+      expect(t, isNotNull);
+      expect(t!.kind, TravelKind.flight);
+      expect(t.provider, 'IndiGo');
+      expect(t.route, 'BLR → DEL');
+      expect(t.code, 'X4K9Q2');
+    });
+
+    test('a fare-marketing blast from an airline is not a trip', () {
+      expect(
+        extractTravel(e(
+          from: 'IndiGo <offers@goindigo.in>',
+          subject: 'Lowest fares of the season — flat 20% off, book now and save',
+          body: 'Grab the deal before the sale is live ends.',
+        )),
+        isNull,
+      );
+    });
+
+    test('unknown sender needs strong travel language', () {
+      expect(
+        extractTravel(e(
+          from: 'random@example.com',
+          subject: 'A flight of fancy',
+          body: 'Just musing about travel.',
+        )),
+        isNull,
+      );
+      final t = extractTravel(e(
+        from: 'bookings@somewhere.com',
+        subject: 'Booking confirmed',
+        body: 'Your itinerary is attached. PNR ABC123.',
+      ));
+      expect(t, isNotNull);
+    });
+
+    test('runExtractors routes a booking to travel, not delivery', () {
+      final r = runExtractors([
+        e(
+          from: 'MakeMyTrip <trips@makemytrip.com>',
+          subject: 'Booking confirmed: your hotel reservation',
+          body: 'Reservation confirmed. Check-in 10 Aug 2026.',
+        ),
+      ]);
+      expect(r.travel, isNotEmpty);
+      expect(r.deliveries, isEmpty);
     });
   });
 }

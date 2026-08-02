@@ -34,6 +34,8 @@ class GmailSource implements MailSource {
         '{subject:invitation subject:"updated invitation" subject:"canceled event" subject:meeting filename:ics} newer_than:${_clamp(history, 14)}d',
       if (settings.scanReads)
         '{from:substack.com from:youtube.com from:medium.com from:theken.com subject:newsletter subject:"new post" subject:"new episode" subject:uploaded} newer_than:${_clamp(history, 21)}d',
+      if (settings.scanTravel)
+        '{from:makemytrip.com from:goindigo.in from:cleartrip.com from:irctc.co.in subject:pnr subject:"e-ticket" subject:itinerary subject:"booking confirmed" subject:"boarding pass"} newer_than:${_clamp(history, 120)}d',
     ];
   }
 

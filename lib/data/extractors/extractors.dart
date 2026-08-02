@@ -595,6 +595,138 @@ String _titleCaseDomain(String domain) {
   return base[0].toUpperCase() + base.substring(1);
 }
 
+const _travelSenders = <String, (TravelKind, String)>{
+  'goindigo': (TravelKind.flight, 'IndiGo'),
+  'indigo': (TravelKind.flight, 'IndiGo'),
+  'vistara': (TravelKind.flight, 'Vistara'),
+  'airindia': (TravelKind.flight, 'Air India'),
+  'akasaair': (TravelKind.flight, 'Akasa Air'),
+  'spicejet': (TravelKind.flight, 'SpiceJet'),
+  'airasia': (TravelKind.flight, 'AirAsia'),
+  'emirates': (TravelKind.flight, 'Emirates'),
+  'lufthansa': (TravelKind.flight, 'Lufthansa'),
+  'qatarairways': (TravelKind.flight, 'Qatar Airways'),
+  'singaporeair': (TravelKind.flight, 'Singapore Airlines'),
+  'britishairways': (TravelKind.flight, 'British Airways'),
+  'makemytrip': (TravelKind.flight, 'MakeMyTrip'),
+  'cleartrip': (TravelKind.flight, 'Cleartrip'),
+  'goibibo': (TravelKind.flight, 'Goibibo'),
+  'ixigo': (TravelKind.flight, 'ixigo'),
+  'yatra': (TravelKind.flight, 'Yatra'),
+  'easemytrip': (TravelKind.flight, 'EaseMyTrip'),
+  'irctc': (TravelKind.train, 'IRCTC'),
+  'redbus': (TravelKind.bus, 'redBus'),
+  'abhibus': (TravelKind.bus, 'AbhiBus'),
+  'booking.com': (TravelKind.hotel, 'Booking.com'),
+  'agoda': (TravelKind.hotel, 'Agoda'),
+  'airbnb': (TravelKind.hotel, 'Airbnb'),
+  'oyorooms': (TravelKind.hotel, 'OYO'),
+  'oyo': (TravelKind.hotel, 'OYO'),
+  'expedia': (TravelKind.hotel, 'Expedia'),
+  'trivago': (TravelKind.hotel, 'trivago'),
+};
+
+const _travelSignals = [
+  'pnr', 'boarding pass', 'e-ticket', 'eticket', 'itinerary',
+  'booking confirmed', 'booking confirmation', 'reservation confirmed',
+  'your trip', 'web check-in', 'check-in', 'flight', 'your booking',
+];
+
+const _travelMarketing = [
+  'deal', '% off', 'lowest fare', 'book now and save', 'sale is live',
+  'fare drop', 'flat ', 'save up to', 'offer inside', 'lowest price',
+];
+
+final _airportPair = RegExp(r'\b([A-Z]{3})\b\s*(?:→|–|-|to)\s*\b([A-Z]{3})\b');
+final _pnrPattern = RegExp(r'\b([A-Z0-9]{6,10})\b');
+
+TravelItem? extractTravel(EmailMeta email) {
+  final hay = email.haystack;
+  final domain = email.senderDomain;
+
+  (TravelKind, String)? match;
+  for (final entry in _travelSenders.entries) {
+    if (domain.contains(entry.key)) {
+      match = entry.value;
+      break;
+    }
+  }
+
+  // Unknown sender: only claim on strong travel language, and never on
+  // fare-marketing blasts.
+  if (match == null) {
+    if (_travelMarketing.any(hay.contains)) return null;
+    final strong = hay.contains('pnr') ||
+        hay.contains('boarding pass') ||
+        hay.contains('e-ticket') ||
+        hay.contains('itinerary') ||
+        hay.contains('booking confirmed') ||
+        hay.contains('reservation confirmed');
+    if (!strong) return null;
+    match = (TravelKind.flight, _titleCaseDomain(domain));
+  } else {
+    // Known travel sender, but still drop obvious marketing.
+    if (_travelMarketing.any(hay.contains) &&
+        !_travelSignals.any(hay.contains)) {
+      return null;
+    }
+  }
+
+  var (kind, provider) = match;
+  // Refine kind from body language when the sender was an OTA (multi-modal).
+  if (hay.contains('hotel') || hay.contains('check-in') && hay.contains('room')) {
+    kind = TravelKind.hotel;
+  } else if (hay.contains(' train') || hay.contains('irctc')) {
+    kind = TravelKind.train;
+  }
+
+  // Route: two airport codes.
+  String? route;
+  final pair = _airportPair.firstMatch(email.rawText);
+  if (pair != null) route = '${pair.group(1)} → ${pair.group(2)}';
+
+  // PNR / booking reference near the label.
+  String? code;
+  for (final key in ['pnr', 'booking reference', 'booking id', 'confirmation number']) {
+    final idx = hay.indexOf(key);
+    if (idx < 0) continue;
+    final window = email.rawText.substring(
+        (idx).clamp(0, email.rawText.length),
+        (idx + 60).clamp(0, email.rawText.length));
+    final m = _pnrPattern.firstMatch(window.toUpperCase());
+    if (m != null) {
+      code = m.group(1);
+      break;
+    }
+  }
+
+  // Departure / check-in date.
+  DateTime? departure;
+  for (final key in ['depart', 'check-in', 'travel date', 'journey date', 'arriv']) {
+    final idx = hay.indexOf(key);
+    if (idx < 0) continue;
+    final window = hay.substring(idx, (idx + 90).clamp(0, hay.length));
+    departure = extractDate(window, anchor: email.date);
+    if (departure != null) break;
+  }
+  departure ??= extractDate(hay, anchor: email.date);
+
+  return TravelItem(
+    kind: kind,
+    provider: provider,
+    route: route,
+    code: code,
+    departure: departure,
+    lastSeen: email.date,
+    sourceEmailId: email.id,
+    manageUrl: extractActionUrl(
+      email,
+      keywords: ['manage', 'web check-in', 'view itinerary', 'view booking', 'check-in'],
+      preferHosts: ['/checkin', '/manage', '/booking', '/itinerary', '/trip'],
+    ),
+  );
+}
+
 /// Runs every extractor over [emails]; returns extracted insights plus the
 /// emails nothing claimed (candidates for the AI attention pass).
 ({
@@ -602,6 +734,7 @@ String _titleCaseDomain(String domain) {
   List<Bill> bills,
   List<Delivery> deliveries,
   List<EventItem> events,
+  List<TravelItem> travel,
   List<FeedItem> feed,
   List<EmailMeta> unclaimed,
 }) runExtractors(List<EmailMeta> emails) {
@@ -609,6 +742,7 @@ String _titleCaseDomain(String domain) {
   final bills = <Bill>[];
   final deliveries = <Delivery>[];
   final events = <EventItem>[];
+  final travel = <TravelItem>[];
   final feed = <FeedItem>[];
   final unclaimed = <EmailMeta>[];
 
@@ -636,6 +770,11 @@ String _titleCaseDomain(String domain) {
       subscriptions.add(subscription);
       continue;
     }
+    final trip = extractTravel(email);
+    if (trip != null) {
+      travel.add(trip);
+      continue;
+    }
     final feedItem = extractFeed(email);
     if (feedItem != null) {
       feed.add(feedItem);
@@ -649,6 +788,7 @@ String _titleCaseDomain(String domain) {
     bills: bills,
     deliveries: deliveries,
     events: events,
+    travel: travel,
     feed: feed,
     unclaimed: unclaimed,
   );

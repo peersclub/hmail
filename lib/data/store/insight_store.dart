@@ -9,7 +9,7 @@ import '../../domain/models.dart';
 class InsightStore {
   // Bump when extraction logic changes materially — forces a clean re-extract
   // instead of merging against stale results.
-  static const _key = 'insight_snapshot_v5';
+  static const _key = 'insight_snapshot_v6';
 
   Future<InsightSnapshot?> load() async {
     final prefs = await SharedPreferences.getInstance();
@@ -66,6 +66,8 @@ class InsightStore {
           (e) => e.lastSeen),
       feed: mergeBy(previous.feed, fresh.feed, (f) => f.dedupeKey,
           (f) => f.lastSeen),
+      travel: mergeBy(previous.travel, fresh.travel, (t) => t.dedupeKey,
+          (t) => t.lastSeen),
     );
   }
 }

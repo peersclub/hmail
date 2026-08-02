@@ -162,6 +162,15 @@ class DemoMailSource implements MailSource {
         date: now.subtract(const Duration(days: 1)),
       ),
       EmailMeta(
+        id: 'demo-flight',
+        from: 'IndiGo <noreply@goindigo.in>',
+        subject: 'Your e-ticket — BLR to DEL, PNR X4K9Q2',
+        snippet: 'Booking confirmed.',
+        body:
+            'Booking confirmed. PNR: X4K9Q2. Departure BLR → DEL on ${day(now.add(const Duration(days: 2)))}. Web check-in opens 48 hours before departure: https://goindigo.in/web-check-in',
+        date: now.subtract(const Duration(days: 6)),
+      ),
+      EmailMeta(
         id: 'demo-yt',
         from: 'YouTube <noreply@youtube.com>',
         subject: 'Veritasium uploaded: The riddle that fooled Einstein',

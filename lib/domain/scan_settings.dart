@@ -22,6 +22,9 @@ class ScanSettings {
   /// Newsletters, paid articles, YouTube uploads, podcast episodes.
   final bool scanReads;
 
+  /// Flights, hotels, trains, bookings.
+  final bool scanTravel;
+
   /// Master switch for the cloud AI pass. Off means rules-only extraction —
   /// no email text ever leaves the device.
   final bool aiEnabled;
@@ -37,6 +40,7 @@ class ScanSettings {
     this.scanDeliveries = true,
     this.scanEvents = true,
     this.scanReads = true,
+    this.scanTravel = true,
     this.aiEnabled = true,
     this.aiModel = 'anthropic/claude-haiku-4.5',
     this.briefHour = 8,
@@ -51,7 +55,8 @@ class ScanSettings {
       (scanMoney ? 2 : 0) +
       (scanDeliveries ? 1 : 0) +
       (scanEvents ? 1 : 0) +
-      (scanReads ? 1 : 0);
+      (scanReads ? 1 : 0) +
+      (scanTravel ? 1 : 0);
 
   /// Upper bound on emails fetched in one scan — the UI shows this as
   /// "up to N emails per scan". Real counts are lower after dedupe.
@@ -64,6 +69,7 @@ class ScanSettings {
       if (scanDeliveries) 'packages',
       if (scanEvents) 'meetings',
       if (scanReads) 'reads',
+      if (scanTravel) 'trips',
     ];
     if (domains.isEmpty) return 'Nothing selected';
 
@@ -96,6 +102,7 @@ class ScanSettings {
     bool? scanDeliveries,
     bool? scanEvents,
     bool? scanReads,
+    bool? scanTravel,
     bool? aiEnabled,
     String? aiModel,
     int? briefHour,
@@ -107,6 +114,7 @@ class ScanSettings {
         scanDeliveries: scanDeliveries ?? this.scanDeliveries,
         scanEvents: scanEvents ?? this.scanEvents,
         scanReads: scanReads ?? this.scanReads,
+        scanTravel: scanTravel ?? this.scanTravel,
         aiEnabled: aiEnabled ?? this.aiEnabled,
         aiModel: aiModel ?? this.aiModel,
         briefHour: briefHour ?? this.briefHour,
@@ -119,6 +127,7 @@ class ScanSettings {
         'scanDeliveries': scanDeliveries,
         'scanEvents': scanEvents,
         'scanReads': scanReads,
+        'scanTravel': scanTravel,
         'aiEnabled': aiEnabled,
         'aiModel': aiModel,
         'briefHour': briefHour,
@@ -146,6 +155,7 @@ class ScanSettings {
       scanDeliveries: boolOr('scanDeliveries', defaults.scanDeliveries),
       scanEvents: boolOr('scanEvents', defaults.scanEvents),
       scanReads: boolOr('scanReads', defaults.scanReads),
+      scanTravel: boolOr('scanTravel', defaults.scanTravel),
       aiEnabled: boolOr('aiEnabled', defaults.aiEnabled),
       aiModel: json['aiModel'] is String
           ? json['aiModel'] as String
@@ -165,6 +175,7 @@ class ScanSettings {
       other.scanDeliveries == scanDeliveries &&
       other.scanEvents == scanEvents &&
       other.scanReads == scanReads &&
+      other.scanTravel == scanTravel &&
       other.aiEnabled == aiEnabled &&
       other.aiModel == aiModel &&
       other.briefHour == briefHour;
@@ -177,6 +188,7 @@ class ScanSettings {
         scanDeliveries,
         scanEvents,
         scanReads,
+        scanTravel,
         aiEnabled,
         aiModel,
         briefHour,
