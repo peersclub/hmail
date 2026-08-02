@@ -10,14 +10,19 @@ import 'backup_target.dart';
 /// A single file, `nomail-backup.json`, is created once and overwritten in
 /// place on each backup, so the destination always holds exactly the latest.
 class DriveBackupTarget implements BackupTarget {
-  /// Lazily produces an authorized DriveApi (or null if the user isn't signed
-  /// in / declined the scope). Injected so tests can supply a fake, and so the
-  /// target holds no auth state of its own.
-  final Future<drive.DriveApi?> Function() connect;
+  /// Whether a Google account is connected — a cheap check with no consent
+  /// prompt, so it's safe on screen load. "Available" means "we can attempt a
+  /// backup"; the actual Drive-scope grant happens on the first upload.
+  final Future<bool> Function() signedIn;
+
+  /// Lazily produces an authorized DriveApi. [interactive] true may show the
+  /// Google consent sheet, so it's passed only from upload/download (explicit
+  /// user actions) — never from [isAvailable] or [latest].
+  final Future<drive.DriveApi?> Function({bool interactive}) connect;
 
   static const _fileName = 'nomail-backup.json';
 
-  const DriveBackupTarget(this.connect);
+  const DriveBackupTarget({required this.signedIn, required this.connect});
 
   @override
   String get id => 'gdrive';
@@ -26,7 +31,7 @@ class DriveBackupTarget implements BackupTarget {
   String get label => 'Google Drive';
 
   @override
-  Future<bool> isAvailable() async => (await connect()) != null;
+  Future<bool> isAvailable() async => signedIn();
 
   Future<drive.File?> _find(drive.DriveApi api) async {
     final res = await api.files.list(
@@ -40,7 +45,8 @@ class DriveBackupTarget implements BackupTarget {
 
   @override
   Future<BackupMeta?> latest() async {
-    final api = await connect();
+    // Silent: only reads metadata if Drive was already granted. Never prompts.
+    final api = await connect(interactive: false);
     if (api == null) return null;
     try {
       final bundle = await _download(api);
@@ -52,9 +58,11 @@ class DriveBackupTarget implements BackupTarget {
 
   @override
   Future<void> upload(BackupBundle bundle) async {
-    final api = await connect();
+    // Explicit user action — may show the Google consent sheet the first time.
+    final api = await connect(interactive: true);
     if (api == null) {
-      throw const BackupException('Sign in to Google to back up to Drive');
+      throw const BackupException(
+          'Sign in to Google (and allow Drive) to back up');
     }
     try {
       final bytes = bundle.toBytes();
@@ -80,7 +88,9 @@ class DriveBackupTarget implements BackupTarget {
 
   @override
   Future<BackupBundle?> download() async {
-    final api = await connect();
+    // Explicit user action (Restore) — interactive so a fresh install can grant
+    // Drive and pull the backup in one step.
+    final api = await connect(interactive: true);
     if (api == null) return null;
     try {
       return await _download(api);

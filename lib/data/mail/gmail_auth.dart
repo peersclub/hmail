@@ -147,26 +147,30 @@ class GmailAuth {
     }
   }
 
-  /// Authorizes the app-data Drive scope for the first connected account and
-  /// returns a [drive.DriveApi], or null if no account is connected or the user
-  /// declines. Used only for cloud backup: `appDataFolder` is a hidden per-app
-  /// folder — invisible in the user's Drive UI and unreadable by other apps —
-  /// so this never exposes the backup or touches the user's real files.
+  /// Returns a [drive.DriveApi] authorized for the app-data Drive scope, or null
+  /// if no account is connected or authorization isn't available.
   ///
-  /// The `drive.appdata` scope must be added to the OAuth consent screen for
-  /// the authorization to be granted.
-  Future<drive.DriveApi?> authorizeDrive() async {
+  /// [interactive] gates the consent prompt: when false (the default) this only
+  /// returns an API if the scope was *already* granted — a silent check safe to
+  /// call on screen load or for metadata. Only pass true from an explicit user
+  /// action (Back Up Now / Restore), which may show the Google consent sheet.
+  ///
+  /// `appDataFolder` is a hidden per-app folder — invisible in the user's Drive
+  /// and unreadable by other apps — so this never touches their real files. The
+  /// `drive.appdata` scope must be on the OAuth consent screen to be grantable.
+  Future<drive.DriveApi?> driveApi({bool interactive = false}) async {
     final acct = first?.account;
     if (acct == null) return null;
     try {
       await _ensureInitialized();
       final client = acct.authorizationClient;
       const driveScopes = [drive.DriveApi.driveAppdataScope];
-      // authorizeScopes throws if the user declines; the outer catch turns that
-      // into a null return, so past this line authorization is non-null.
-      final authorization =
-          await client.authorizationForScopes(driveScopes) ??
-              await client.authorizeScopes(driveScopes);
+      var authorization = await client.authorizationForScopes(driveScopes);
+      if (authorization == null) {
+        // Not yet granted. Don't prompt unless the caller explicitly asked.
+        if (!interactive) return null;
+        authorization = await client.authorizeScopes(driveScopes);
+      }
       return drive.DriveApi(_BearerClient(
         ({bool refresh = false}) async {
           try {

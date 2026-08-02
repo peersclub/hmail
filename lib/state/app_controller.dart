@@ -53,7 +53,10 @@ class AppController extends ChangeNotifier {
   );
   final BackupPrefsStore _backupPrefsStore = BackupPrefsStore();
   late final Map<String, BackupTarget> _backupTargets = {
-    'gdrive': DriveBackupTarget(_auth.authorizeDrive),
+    'gdrive': DriveBackupTarget(
+      signedIn: () async => !_isDemo && _auth.hasAccounts,
+      connect: _auth.driveApi,
+    ),
     'icloud': const ICloudBackupTarget(),
   };
 
