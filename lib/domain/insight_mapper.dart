@@ -79,6 +79,34 @@ List<Insight> snapshotToInsights(InsightSnapshot s) {
     ));
   }
 
+  for (final p in s.activePayments) {
+    final failed = p.kind == PaymentKind.failed;
+    out.add(Insight(
+      id: 'payment:${p.sourceEmailId}',
+      domain: InsightDomain.money,
+      title: p.source,
+      subtitle: failed ? 'Payment failed' : 'Refund',
+      trailing: p.amount == null ? null : formatMoney(p.amount!, p.currency),
+      caption: failed ? 'Action needed' : 'Refunded',
+      anchorDate: failed ? null : p.date,
+      overdue: failed, // forces the imminent tier + red treatment
+      icon: failed
+          ? CupertinoIcons.exclamationmark_circle
+          : CupertinoIcons.arrow_counterclockwise,
+      brandKey: p.source,
+      weight: failed ? 92 : 78,
+      actions: [
+        if (p.actionUrl != null)
+          InsightAction(
+            label: failed ? 'Fix payment' : 'View',
+            uri: Uri.parse(p.actionUrl!),
+            kind: ActionKind.openLink,
+          ),
+        openEmailAction(p.sourceEmailId),
+      ],
+    ));
+  }
+
   for (final t in s.upcomingTravel) {
     final ref = t.code == null ? null : 'Ref ${t.code}';
     out.add(Insight(

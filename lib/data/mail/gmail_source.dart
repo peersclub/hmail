@@ -24,7 +24,7 @@ class GmailSource implements MailSource {
     final history = settings.historyDays;
     return [
       if (settings.scanMoney) ...[
-        'subject:(receipt OR renewal OR subscription OR "payment successful" OR invoice) newer_than:${history}d',
+        'subject:(receipt OR renewal OR subscription OR "payment successful" OR invoice OR refund OR "payment failed" OR declined) newer_than:${history}d',
         'subject:(bill OR due OR statement) newer_than:${_clamp(history, 60)}d',
       ],
       if (settings.scanDeliveries)

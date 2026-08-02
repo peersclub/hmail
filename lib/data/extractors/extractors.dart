@@ -727,6 +727,47 @@ TravelItem? extractTravel(EmailMeta email) {
   );
 }
 
+const _refundSignals = [
+  'refund processed', 'refund initiated', 'refund of', 'has been refunded',
+  'your refund', 'refund issued', 'money has been refunded',
+];
+const _failedSignals = [
+  'payment failed', 'payment declined', 'transaction failed',
+  'payment unsuccessful', 'autopay failed', 'unable to process your payment',
+  'card was declined', 'payment could not be processed',
+];
+
+PaymentAlert? extractPayment(EmailMeta email) {
+  final hay = email.haystack;
+
+  final PaymentKind kind;
+  if (_failedSignals.any(hay.contains)) {
+    kind = PaymentKind.failed;
+  } else if (_refundSignals.any(hay.contains)) {
+    kind = PaymentKind.refund;
+  } else {
+    return null;
+  }
+
+  final money = extractMoney(hay);
+
+  return PaymentAlert(
+    kind: kind,
+    source: _titleCaseDomain(email.senderDomain),
+    amount: money?.amount,
+    currency: money?.currency ?? 'INR',
+    date: email.date,
+    lastSeen: email.date,
+    sourceEmailId: email.id,
+    actionUrl: extractActionUrl(
+      email,
+      keywords: kind == PaymentKind.failed
+          ? ['update payment', 'retry', 'pay now', 'update card', 'fix']
+          : ['view', 'track refund', 'details', 'order'],
+    ),
+  );
+}
+
 /// Runs every extractor over [emails]; returns extracted insights plus the
 /// emails nothing claimed (candidates for the AI attention pass).
 ({
@@ -735,6 +776,7 @@ TravelItem? extractTravel(EmailMeta email) {
   List<Delivery> deliveries,
   List<EventItem> events,
   List<TravelItem> travel,
+  List<PaymentAlert> payments,
   List<FeedItem> feed,
   List<EmailMeta> unclaimed,
 }) runExtractors(List<EmailMeta> emails) {
@@ -743,6 +785,7 @@ TravelItem? extractTravel(EmailMeta email) {
   final deliveries = <Delivery>[];
   final events = <EventItem>[];
   final travel = <TravelItem>[];
+  final payments = <PaymentAlert>[];
   final feed = <FeedItem>[];
   final unclaimed = <EmailMeta>[];
 
@@ -752,6 +795,13 @@ TravelItem? extractTravel(EmailMeta email) {
     final event = extractEvent(email);
     if (event != null) {
       events.add(event);
+      continue;
+    }
+    // Payment alerts before bills: a "payment failed" for a bill is a
+    // money-at-risk alert, more urgent than the bill row itself.
+    final payment = extractPayment(email);
+    if (payment != null) {
+      payments.add(payment);
       continue;
     }
     final delivery = extractDelivery(email);
@@ -789,6 +839,7 @@ TravelItem? extractTravel(EmailMeta email) {
     deliveries: deliveries,
     events: events,
     travel: travel,
+    payments: payments,
     feed: feed,
     unclaimed: unclaimed,
   );

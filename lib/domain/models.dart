@@ -388,6 +388,65 @@ class FeedItem {
       );
 }
 
+enum PaymentKind { refund, failed }
+
+/// Money in motion that needs attention: a refund you should confirm landed,
+/// or a payment that failed and needs fixing (a declined card, a failed
+/// autopay). Higher stakes than a scheduled bill — money lost vs. money due.
+class PaymentAlert {
+  final PaymentKind kind;
+  final String source;
+  final double? amount;
+  final String currency;
+  final DateTime date;
+  final DateTime lastSeen;
+  final String sourceEmailId;
+  final String? actionUrl;
+
+  const PaymentAlert({
+    required this.kind,
+    required this.source,
+    this.amount,
+    this.currency = 'INR',
+    required this.date,
+    required this.lastSeen,
+    required this.sourceEmailId,
+    this.actionUrl,
+  });
+
+  /// Resolved alerts age out after three weeks.
+  bool get isStale =>
+      date.isBefore(DateTime.now().subtract(const Duration(days: 21)));
+
+  String get dedupeKey =>
+      '${kind.name}|${source.toLowerCase()}|${amount?.toStringAsFixed(2) ?? ''}';
+
+  Map<String, dynamic> toJson() => {
+        'kind': kind.name,
+        'source': source,
+        'amount': amount,
+        'currency': currency,
+        'date': date.toIso8601String(),
+        'lastSeen': lastSeen.toIso8601String(),
+        'sourceEmailId': sourceEmailId,
+        'actionUrl': actionUrl,
+      };
+
+  factory PaymentAlert.fromJson(Map<String, dynamic> json) => PaymentAlert(
+        kind: PaymentKind.values.firstWhere(
+          (k) => k.name == json['kind'],
+          orElse: () => PaymentKind.refund,
+        ),
+        source: json['source'] as String,
+        amount: (json['amount'] as num?)?.toDouble(),
+        currency: (json['currency'] ?? 'INR') as String,
+        date: DateTime.parse(json['date'] as String),
+        lastSeen: DateTime.parse(json['lastSeen'] as String),
+        sourceEmailId: json['sourceEmailId'] as String,
+        actionUrl: json['actionUrl'] as String?,
+      );
+}
+
 enum TravelKind { flight, train, hotel, bus, cab }
 
 /// A trip surfaced from email — a flight, hotel, train, or booking. The
@@ -530,6 +589,7 @@ class InsightSnapshot {
   final List<EventItem> events;
   final List<FeedItem> feed;
   final List<TravelItem> travel;
+  final List<PaymentAlert> payments;
   final List<AttentionItem> attention;
   final DailyBrief? brief;
   final DateTime? lastSyncedAt;
@@ -542,6 +602,7 @@ class InsightSnapshot {
     this.events = const [],
     this.feed = const [],
     this.travel = const [],
+    this.payments = const [],
     this.attention = const [],
     this.brief,
     this.lastSyncedAt,
@@ -555,6 +616,7 @@ class InsightSnapshot {
       events.isEmpty &&
       feed.isEmpty &&
       travel.isEmpty &&
+      payments.isEmpty &&
       attention.isEmpty;
 
   /// Content from the last two weeks, newest first — the reading queue.
@@ -595,6 +657,10 @@ class InsightSnapshot {
         ..sort((a, b) => (a.departure ?? a.lastSeen)
             .compareTo(b.departure ?? b.lastSeen));
 
+  List<PaymentAlert> get activePayments =>
+      payments.where((p) => !p.isStale).toList()
+        ..sort((a, b) => b.date.compareTo(a.date));
+
   /// Upcoming (non-cancelled, future) events, soonest first.
   List<EventItem> get upcomingEvents =>
       events.where((e) => e.isUpcoming).toList()
@@ -610,6 +676,7 @@ class InsightSnapshot {
     List<EventItem>? events,
     List<FeedItem>? feed,
     List<TravelItem>? travel,
+    List<PaymentAlert>? payments,
     List<AttentionItem>? attention,
     DailyBrief? brief,
     DateTime? lastSyncedAt,
@@ -622,6 +689,7 @@ class InsightSnapshot {
         events: events ?? this.events,
         feed: feed ?? this.feed,
         travel: travel ?? this.travel,
+        payments: payments ?? this.payments,
         attention: attention ?? this.attention,
         brief: brief ?? this.brief,
         lastSyncedAt: lastSyncedAt ?? this.lastSyncedAt,
@@ -635,6 +703,7 @@ class InsightSnapshot {
         'events': events.map((e) => e.toJson()).toList(),
         'feed': feed.map((f) => f.toJson()).toList(),
         'travel': travel.map((t) => t.toJson()).toList(),
+        'payments': payments.map((p) => p.toJson()).toList(),
         'attention': attention.map((a) => a.toJson()).toList(),
         'brief': brief?.toJson(),
         'lastSyncedAt': lastSyncedAt?.toIso8601String(),
@@ -660,6 +729,9 @@ class InsightSnapshot {
             .toList(),
         travel: ((json['travel'] ?? []) as List)
             .map((e) => TravelItem.fromJson(e as Map<String, dynamic>))
+            .toList(),
+        payments: ((json['payments'] ?? []) as List)
+            .map((e) => PaymentAlert.fromJson(e as Map<String, dynamic>))
             .toList(),
         attention: ((json['attention'] ?? []) as List)
             .map((e) => AttentionItem.fromJson(e as Map<String, dynamic>))

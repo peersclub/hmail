@@ -235,6 +235,7 @@ void main() {
 
   feedTests();
   travelTests();
+  paymentTests();
 
   group('runExtractors', () {
     test('routes each email to exactly one bucket', () {
@@ -389,6 +390,60 @@ void travelTests() {
       ]);
       expect(r.travel, isNotEmpty);
       expect(r.deliveries, isEmpty);
+    });
+  });
+}
+
+void paymentTests() {
+  EmailMeta e({String from = '', String subject = '', String body = ''}) =>
+      EmailMeta(
+          id: 'p',
+          from: from,
+          subject: subject,
+          snippet: '',
+          body: body,
+          date: DateTime(2026, 8, 1));
+
+  group('extractPayment', () {
+    test('a declined payment is a failed alert with the amount', () {
+      final a = extractPayment(e(
+        from: 'Netflix <info@netflix.com>',
+        subject: 'Your payment was declined',
+        body: 'Payment failed: could not process your ₹649 payment.',
+      ));
+      expect(a, isNotNull);
+      expect(a!.kind, PaymentKind.failed);
+      expect(a.amount, 649);
+    });
+
+    test('a processed refund is a refund alert', () {
+      final a = extractPayment(e(
+        from: 'Amazon <auto@amazon.in>',
+        subject: 'Refund processed',
+        body: 'Refund of ₹1,299 has been refunded to your card.',
+      ));
+      expect(a!.kind, PaymentKind.refund);
+      expect(a.amount, 1299);
+    });
+
+    test('an ordinary receipt is not a payment alert', () {
+      expect(
+        extractPayment(e(
+          from: 'x@y.com', subject: 'Receipt', body: 'Payment successful ₹5.')),
+        isNull,
+      );
+    });
+
+    test('runExtractors routes a failed payment to payments, not bills', () {
+      final r = runExtractors([
+        e(
+          from: 'HDFC <alerts@hdfcbank.net>',
+          subject: 'Autopay failed',
+          body: 'Your autopay failed for ₹1,840 due to insufficient balance.',
+        ),
+      ]);
+      expect(r.payments, isNotEmpty);
+      expect(r.payments.first.kind, PaymentKind.failed);
     });
   });
 }

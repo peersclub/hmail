@@ -126,6 +126,24 @@ class DemoMailSource implements MailSource {
         date: now.subtract(const Duration(hours: 20)),
       ),
       EmailMeta(
+        id: 'demo-failed',
+        from: 'Netflix <info@mailer.netflix.com>',
+        subject: 'Your payment was declined',
+        snippet: 'Update your payment method.',
+        body:
+            'Payment failed: we could not process your ₹649 payment. Update payment method: https://netflix.com/account/payment',
+        date: now.subtract(const Duration(hours: 8)),
+      ),
+      EmailMeta(
+        id: 'demo-refund',
+        from: 'Amazon.in <auto-confirm@amazon.in>',
+        subject: 'Your refund has been processed',
+        snippet: 'Refund initiated.',
+        body:
+            'Refund of ₹1,299 has been refunded to your original payment method for order 402-1234.',
+        date: now.subtract(const Duration(days: 1)),
+      ),
+      EmailMeta(
         id: 'demo-github',
         from: 'GitHub <noreply@github.com>',
         subject: 'Security alert: new sign-in from an unrecognized device',

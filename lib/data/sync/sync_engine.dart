@@ -163,6 +163,7 @@ class SyncEngine {
       deliveries: extracted.deliveries,
       events: extracted.events,
       travel: extracted.travel,
+      payments: extracted.payments,
       feed: extracted.feed,
       lastSyncedAt: DateTime.now(),
       emailsScanned: emails.length,
@@ -237,6 +238,10 @@ InsightSnapshot applyVerdicts(
     travel: [
       for (final t in snapshot.travel)
         if (kept(t.sourceEmailId)) t,
+    ],
+    payments: [
+      for (final p in snapshot.payments)
+        if (kept(p.sourceEmailId)) p,
     ],
   );
 }
