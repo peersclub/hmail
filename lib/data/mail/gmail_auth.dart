@@ -2,6 +2,7 @@ import 'dart:io' show SocketException;
 
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:google_sign_in/google_sign_in.dart';
+import 'package:googleapis/drive/v3.dart' as drive;
 import 'package:googleapis/gmail/v1.dart';
 import 'package:http/http.dart' as http;
 
@@ -143,6 +144,42 @@ class GmailAuth {
       try {
         await GoogleSignIn.instance.signOut();
       } catch (_) {}
+    }
+  }
+
+  /// Authorizes the app-data Drive scope for the first connected account and
+  /// returns a [drive.DriveApi], or null if no account is connected or the user
+  /// declines. Used only for cloud backup: `appDataFolder` is a hidden per-app
+  /// folder — invisible in the user's Drive UI and unreadable by other apps —
+  /// so this never exposes the backup or touches the user's real files.
+  ///
+  /// The `drive.appdata` scope must be added to the OAuth consent screen for
+  /// the authorization to be granted.
+  Future<drive.DriveApi?> authorizeDrive() async {
+    final acct = first?.account;
+    if (acct == null) return null;
+    try {
+      await _ensureInitialized();
+      final client = acct.authorizationClient;
+      const driveScopes = [drive.DriveApi.driveAppdataScope];
+      // authorizeScopes throws if the user declines; the outer catch turns that
+      // into a null return, so past this line authorization is non-null.
+      final authorization =
+          await client.authorizationForScopes(driveScopes) ??
+              await client.authorizeScopes(driveScopes);
+      return drive.DriveApi(_BearerClient(
+        ({bool refresh = false}) async {
+          try {
+            final fresh = await client.authorizationForScopes(driveScopes);
+            return fresh?.accessToken;
+          } catch (_) {
+            return null;
+          }
+        },
+        initialToken: authorization.accessToken,
+      ));
+    } catch (_) {
+      return null;
     }
   }
 

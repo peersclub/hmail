@@ -10,6 +10,7 @@ import '../../state/app_controller.dart';
 import '../format.dart';
 import '../glass/glass.dart';
 import 'ai_screen.dart';
+import 'backup_screen.dart';
 import 'knowledge_screen.dart';
 import 'processing_screen.dart';
 import 'scan_screen.dart';
@@ -100,6 +101,16 @@ class SettingsScreen extends StatelessWidget {
         GlassSection(
           label: 'Your data',
           children: [
+            GlassRow(
+              icon: CupertinoIcons.cloud,
+              title: 'Backup',
+              subtitle: app.backupPrefs.lastBackupAt == null
+                  ? 'Not backed up · ${app.backupPrefs.frequency.label}'
+                  : 'Last backup ${formatDay(app.backupPrefs.lastBackupAt!)} · '
+                      '${app.backupDestinationLabel}',
+              subtitleMaxLines: 2,
+              onTap: () => _push(context, const BackupScreen()),
+            ),
             GlassRow(
               icon: CupertinoIcons.square_arrow_up,
               title: 'Export Insights',

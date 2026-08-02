@@ -1,43 +1,61 @@
 # Roadmap
 
-Phased plan from demo prototype to working client. Each phase is independently shippable.
+Where the product actually is, and what comes next. The long-range product
+plan (life domains, iOS surfaces, monetisation) lives in [[One App Vision]];
+this is the build order.
 
-> **2026-08-01:** The product north star — NoMail as the ONE app connected to everything on the phone — now lives in [[One App Vision]] (14 life domains + deep-link catalog, iOS surface plan, AI agent layer, competitive strategy, Phases A/B/C). The contextual-actions core it builds on is documented in [[Actions API]].
+## Done
 
-## Phase 1 — Make it honest and bootable ✅ (2026-08-01)
+**Foundation** (2026-08-01) — honest boot, `.env` tolerant load, real Google
+Sign-In (google_sign_in 7.x) with an explicit demo mode, rename HMail → NoMail.
 
-- [x] Clone repo to `/Users/Victor/Projects22/hmail`, audit code vs README
-- [x] Fix startup crash when `.env` missing (tolerant load, demo fallback)
-- [x] `.env.example` committed; `.env` gitignored and created locally
-- [x] Replace retired Claude model (`claude-3-haiku-20240307` → `claude-haiku-4-5`)
-- [x] Real Google Sign-In wiring (google_sign_in 7.x) with graceful fall-back to explicit demo mode (`isDemoMode`)
-- [x] Demo-mode badge visible in app state (provider flag)
+**Insight core** — rule extractors for subscriptions, bills, deliveries,
+meetings, travel, payment alerts, reads and returns/warranty; a deterministic
+daily brief that exists with or without AI; versioned local snapshot store.
 
-## Phase 2 — Real Gmail, one platform (next)
+**Actions** — every insight carries the link that resolves it: tracking pages,
+`upi://` pay intents, manage-subscription pages, meeting join links, always
+with "Open email" as the floor. See [[Actions API]].
 
-- [ ] Create/choose Google Cloud project, enable Gmail API, mint OAuth client ID *(user action — blocks everything below)*
-- [ ] Pick first platform (recommend **iOS or Android** — google_sign_in 7.x on web doesn't support `authenticate()`; web needs the GIS renderButton flow, deferred)
-- [ ] Verify sign-in → inbox fetch → detail view end-to-end with a real account
-- [ ] Read/unread, star, archive, trash against the live API
-- [ ] Compose + send
+**Presentation** — generic `Insight` + `rankInsights()` + one `InsightCard`,
+so a new insight type is a model, an extractor and one mapper block with zero
+navigation code. Four tabs: Today · Money · Timeline · Settings, with a
+chip-filtered, drag-reorderable Timeline.
 
-## Phase 3 — Real AI insights
+**AI layer** — audit pass that drops misread insights and fixes mangled brand
+names, plus the brief. Optional and never fatal.
 
-- [ ] Wire `CLAUDE_API_KEY`, run `analyzeEmails` on real inbox
-- [ ] Parse insights into `AmazonOrder` / `Subscription` / `Bill` and feed the dashboard (currently only demo data reaches it)
-- [ ] Replace heuristic importance/summary/keywords with model output (single batched call)
-- [ ] Cost control: cap analysis to N most-recent emails, cache results locally (shared_preferences)
+**Learned knowledge** — the playbook the app writes for itself, applied
+deterministically thereafter. See [[Architecture]].
 
-## Phase 4 — Hardening
+**Settings as the trust surface** — AI connection + spend, scan scope,
+processing/audit log, learned-knowledge management. See [[Settings Plan]].
 
-- [ ] Delete legacy `gmail_service.dart` + `email_provider.dart`
-- [ ] Consolidate charts on `fl_chart` (drop discontinued `charts_flutter`)
-- [ ] Fix `withOpacity` deprecations (`.withValues()`)
-- [ ] Tests: provider unit tests for demo/real mode switching; widget test currently references unused import
-- [ ] Token refresh + sign-in persistence across app restarts
+**Reliability** — multi-account Gmail, a client that survives a
+several-hundred-request scan, partial-failure tolerance, live progress
+reporting, notifications, Drive/iCloud backup.
 
-## Later (from README wishlist)
+## Next
 
-Multi-account, offline mode, notifications, calendar, desktop targets.
+**Ship-blocking**
+- [ ] Move API keys behind a server-side proxy — `.env` currently ships inside
+      the IPA as a Flutter asset
+- [ ] Google CASA Tier 2 assessment for the restricted Gmail scope (annual;
+      start early, it gates public release)
+- [ ] Rotate the OpenRouter key and set a monthly spend cap
 
-Related: [[Requirements]], [[Development Log]]
+**Product**
+- [ ] Show the destination app on each action ("Opens in Delhivery") with its
+      icon, and detect what is installed — needs `LSApplicationQueriesSchemes`
+      in `Info.plist`
+- [ ] Per-insight feedback ("this isn't a bill") feeding a local ignore list —
+      turns corrections into training data with no server
+- [ ] Pre-scan cost estimate ("~200 emails, about ₹2")
+- [ ] Home-screen widget + Live Activity for out-for-delivery parcels
+      (ranked highest-ROI iOS surfaces in [[One App Vision]])
+
+**Quality**
+- [ ] On-device VoiceOver audit of Timeline chip drag-reorder
+- [ ] Pin the Timeline chip row (needs a sliver refactor)
+
+Related: [[Requirements]], [[Architecture]], [[Development Log]]

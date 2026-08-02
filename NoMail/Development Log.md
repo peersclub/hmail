@@ -1,5 +1,20 @@
 # Development Log
 
+## 2026-08-02 — WhatsApp-style backup & restore (iCloud + Google Drive)
+
+Full backup system for NoMail's knowledge + insights. See **[[Backup & Restore]]** for architecture and the two enablement steps.
+
+- **Bundle** — `BackupBundle` aggregates all four stores (`snapshot`/`playbook`/`settings`/`timelineOrder`) into one versioned JSON doc. The playbook (AI-earned recipes) is the piece a rescan can't rebuild, so it's the real reason to back up.
+- **Targets** — `BackupTarget` interface + `DriveBackupTarget` (Drive `appDataFolder`, hidden per-app folder, reuses Google Sign-In with an added `drive.appdata` scope via `GmailAuth.authorizeDrive`), `ICloudBackupTarget` (native `MethodChannel` → `AppDelegate.swift`, ubiquity container), `MemoryBackupTarget` (tests/null).
+- **Service** — `BackupService.collect/restore`; restore rehydrates the stores and `AppController._reloadFromStores()` refreshes in-memory state so the UI updates at once.
+- **When** — `BackupPrefs` Off/Daily/Weekly; auto-backup is **opportunistic after a sync** (no phone daemon). `AppController._maybeAutoBackup`.
+- **UI** — Settings → **Backup** screen (last-backup status, Back Up Now, destination picker, frequency, Restore with an overwrite confirm).
+- **Native** — iCloud handler inline in `AppDelegate.swift` (no fragile pbxproj edit). Degrades to "unavailable" until the iCloud capability is added in Xcode, so the build stays green today.
+
+**Two enablement steps needed (Victor's accounts):** (1) add `drive.appdata` to the OAuth consent screen + enable the Drive API; (2) add the iCloud capability + container `iCloud.com.nomail.nomail` in Xcode. Details in [[Backup & Restore]].
+
+288 tests pass (new `backup_service_test.dart`), analyze clean, release build signed + installed to the iPhone.
+
 ## 2026-08-02 — Boarding passes / check-in windows
 
 Extended the **travel** domain (no new domain, no native code) so the pressing moment — *check-in open now / boarding pass ready* — outranks a distant confirmed flight.
@@ -132,3 +147,104 @@ Two new insight domains on the Phase-1 architecture, each surfacing automaticall
 **Security/OTP status:** the review's "AttentionItem is mis-bucketed" concern was pre-Phase-1. Post-mapper, `AttentionItem` maps to `InsightDomain.security` at weight 100 — the highest — so login/security alerts already rank at the top and appear under the Timeline "Security" chip. A dedicated typed OTP model wasn't needed for correct bucketing/ranking; could add one later if OTP-specific actions are wanted (they expire in minutes, so likely low ROI).
 
 **Still deferred — multiple Gmail accounts.** Genuinely needs a live second Google sign-in to build+verify (the composite multi-account source can't be tested on-simulator without a real 2nd account), and it touches the auth layer a concurrent session has been editing. Deliberate next-session task with the user present to sign in.
+
+## 2026-08-01 → 02 — Contextual actions, AI audit, and the trust surface
+
+Three sessions running alongside the IA refactor, all in the core layers.
+
+**Actions.** Every insight now carries the action that resolves it:
+`domain/actions.dart` builds ordered `InsightAction`s — tracking links
+(email link first, then carrier template, then a universal tracker), pay
+links including `upi://` intents, subscription manage pages, meeting join
+links — always ending with "Open email", the one action that always exists.
+`ui/action_sheet.dart` renders them; a single action launches straight
+through. Calendar/meeting extraction (`extractors/events.dart`) and link
+scoring (`extractors/links.dart`) landed with it. Handoff doc: [[Actions API]].
+
+**AI audit.** The OpenRouter pass stopped being brief-only. It now sees every
+rule-extracted insight next to its source email and returns
+`InsightVerdicts {rejected, renamed}` — dropping false positives, fixing
+mangled brand names ("Nct" → Flipkart). Applied by the pure `applyVerdicts()`
+so a bad response can never corrupt a snapshot silently.
+
+**Three date bugs**, found while chasing "the data is dumb" and each quietly
+corrupting every dated insight:
+1. The day group in `_monthNameDate` greedily ate the first two digits of the
+   year — "1 Aug 2026" parsed as day 20 with the year lost. Fixed with
+   `(\d{1,2}(?!\d))`.
+2. The roll-to-next-year check compared a midnight candidate against a
+   *timestamped* anchor, so anything meaning "today" jumped a full year (a
+   demo meeting showed 2027).
+3. Whitespace after the month name was mandatory, so "due 1 Aug" — how real
+   bills write it — never parsed at all.
+
+Plus the reported **"GitHub in delivery"** bug: dev-tool senders say
+"shipped", "package" and "delivery" constantly (a diff touching
+`package.json` read as a parcel), so `_nonCommerceSenders` drops them.
+
+**Settings became the trust surface** — the app reads a whole mailbox, spends
+the user's money, and rewrites their data, so it has to answer three
+questions. *What is the AI doing?* (`ai_screen`: masked key, model picker,
+a real connection test, live OpenRouter spend and a warning when the key has
+no cap). *What is it reading?* (`scan_screen`: emails-per-search, history
+depth, per-domain switches, live estimate). *What did it change?*
+(`processing_screen`: the pipeline live, plus a plain-language log of every
+correction). Full reasoning in [[Settings Plan]].
+
+Also shipped here: `notification_service` (8am brief with Pay/Track/Join
+actions), `backfill_stats` (the first-scan "hiding in your inbox" card),
+~75 Indian sender templates, and the 365-day receipts window so annual
+renewals surface.
+
+## 2026-08-02 — The app learns new content types by itself (`049b453`)
+
+Hardcoding a recipe per merchant does not scale — there is always one more
+courier. The user's steer, mid-batch, was the right one: build the mechanism
+instead of the list.
+
+NoMail now keeps a **playbook it writes for itself**. Each sync: rules →
+playbook over the leftovers → the model as a *teacher* on what nothing
+recognised. The model returns a recipe (how to spot the sender, which fields
+to pull, which URLs to build) and from the next sync that shape is handled by
+rule alone. A learned Delhivery recipe builds the tracking URL with the real
+AWB in it, forever, having cost one request once.
+
+Built as `domain/knowledge.dart` (matcher/field/action/ContentType/Playbook
++ `validate()`), `domain/knowledge_mapper.dart` (learned match → typed
+insight, degrading to an attention card but **never losing the link**),
+`data/ai/knowledge_learner.dart` (sender clustering + ~14 safety rejections),
+`data/store/knowledge_store.dart`, and `ui/screens/knowledge_screen.dart`.
+
+The safety work is the substance: a model authoring matchers that run against
+someone's mailbox is genuinely risky, so an unanchored matcher can never
+match, regexes are probed against a dense string to reject catch-alls,
+declared domains must appear in the cluster the recipe came from, and
+templates are scheme-whitelisted. Invalid entries are skipped with a reason
+rather than stored. See [[Architecture]] for the contract.
+
+## 2026-08-02 — Sync survives a real mailbox; the spinner explains itself
+
+**Reported:** `Sync failed: ClientException: Bad file descriptor` on a
+`maxResults=50` scan. Diagnosis: a scan is one list request per query plus one
+per message — up to ~255 sequential requests on a single keep-alive
+connection, and phones lose sockets. The bug was not that a socket died; it
+was that nothing recovered.
+
+Fixed in three places. `_BearerClient` retries socket errors on a fresh
+connection with backoff (rebuilding the request — a `BaseRequest` can only be
+sent once, so retrying the original silently fails). `GmailSource` guards each
+query and each message individually, counting `failures`, so one dead message
+no longer discards the two hundred that already succeeded. And a latent bug
+found on the way: the client held a *snapshot* access token, which expires
+hourly — it now holds a provider and re-fetches on 401. Total failure still
+throws, deliberately: an unreachable Gmail must not render as an empty inbox.
+
+**Then made the wait legible.** The top-right spinner is where people look
+when they wonder whether the app has hung, so it is now tappable (→ the live
+Processing pipeline), and a card at the top of Today shows the current line
+without needing the tap: "Searching packages (3 of 5)", "Reading packages ·
+15 of 50", "Checking 19 results with AI", "Studying 6 unrecognised emails".
+Multi-account runs append "(account 2)" so the counter restarting makes sense.
+
+281 tests green, on device.
+

@@ -1,5 +1,8 @@
 # Actions API — contextual actions for every insight
 
+> Part of [[Architecture]]; the product reasoning is in [[One App Vision]] and
+> the destination-app work is tracked in [[Roadmap]].
+
 > Written 2026-08-01 by the core-functionality agent, for whichever agent/human wires up the UI.
 > Everything here is implemented, unit-tested (`test/actions_test.dart`, 38/38 passing with the
 > existing extractor suite), and pure Dart except the launcher.

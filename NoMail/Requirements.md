@@ -1,5 +1,16 @@
 # Requirements
 
+> **⚠️ Historical — read [[Roadmap]] and [[One App Vision]] for what NoMail is
+> now.** This is the audit of the original README as found on 2026-08-01. The
+> product pivoted that same week: NoMail is **not** a full email client. The
+> "core email" requirements below (compose, send, labels, star/archive/trash,
+> thread view) were **deliberately dropped** — Gmail is treated as a read-only
+> backend, and the app's surface is ranked, actionable insights. The scope is
+> `gmail.readonly` on purpose; NoMail cannot send, move or delete mail.
+>
+> Kept because the AI-insight and non-functional sections below still describe
+> real intent, and because the audit records why the pivot happened.
+
 Source: repo README (v. initial commit 65c1164) plus code audit on 2026-08-01. Items are tagged with implementation status found at recovery: ✅ built, 🟡 partial/stub, ❌ absent.
 
 ## 1. Core email (must-have)

@@ -8,15 +8,22 @@ import '../data/ai/ai_status.dart';
 import '../data/ai/insight_ai.dart';
 import '../data/ai/knowledge_learner.dart';
 import '../data/ai/openrouter_ai.dart';
+import '../data/backup/backup_service.dart';
+import '../data/backup/backup_target.dart';
+import '../data/backup/drive_backup_target.dart';
+import '../data/backup/icloud_backup_target.dart';
 import '../data/mail/gmail_auth.dart';
 import '../data/mail/mail_source.dart';
 import '../data/mail/multi_gmail_source.dart';
+import '../data/store/backup_prefs_store.dart';
 import '../data/store/insight_store.dart';
 import '../data/store/knowledge_store.dart';
 import '../data/store/settings_store.dart';
+import '../data/store/timeline_order_store.dart';
 import '../data/sync/sync_engine.dart';
 import '../domain/actions.dart';
 import '../domain/backfill_stats.dart';
+import '../domain/backup_prefs.dart';
 import '../domain/knowledge.dart';
 import '../domain/models.dart';
 import '../domain/scan_settings.dart';
@@ -34,6 +41,21 @@ class AppController extends ChangeNotifier {
   final KnowledgeStore _knowledgeStore;
   final KnowledgeLearner _learner;
   final AiStatusService aiStatus;
+
+  /// Backup service reads/writes the same SharedPreferences-backed stores the
+  /// app uses — the store classes are stateless key wrappers, so fresh
+  /// instances see the same data.
+  final BackupService _backup = BackupService(
+    insights: InsightStore(),
+    knowledge: KnowledgeStore(),
+    settings: SettingsStore(),
+    timeline: TimelineOrderStore(),
+  );
+  final BackupPrefsStore _backupPrefsStore = BackupPrefsStore();
+  late final Map<String, BackupTarget> _backupTargets = {
+    'gdrive': DriveBackupTarget(_auth.authorizeDrive),
+    'icloud': const ICloudBackupTarget(),
+  };
 
   AppController({
     GmailAuth? auth,
@@ -145,6 +167,156 @@ class AppController extends ChangeNotifier {
     }
   }
 
+  // ── Backup ────────────────────────────────────────────────────────────
+  BackupPrefs _backupPrefs = const BackupPrefs();
+  bool _backupBusy = false;
+  String? _backupError;
+  BackupMeta? _remoteBackupMeta;
+  bool _remoteMetaChecked = false;
+
+  BackupPrefs get backupPrefs => _backupPrefs;
+  bool get backupBusy => _backupBusy;
+  String? get backupError => _backupError;
+
+  /// Metadata of the backup currently in the cloud, once [refreshRemoteMeta]
+  /// has run. Null means "none found" or "not checked yet" — disambiguate with
+  /// [remoteMetaChecked].
+  BackupMeta? get remoteBackupMeta => _remoteBackupMeta;
+  bool get remoteMetaChecked => _remoteMetaChecked;
+
+  List<BackupTarget> get backupTargets => _backupTargets.values.toList();
+
+  BackupTarget get _selectedTarget =>
+      _backupTargets[_backupPrefs.destinationId] ?? _backupTargets['gdrive']!;
+
+  String get backupDestinationLabel => _selectedTarget.label;
+
+  String _deviceLabel() => accountName ?? accountEmail ?? 'This device';
+
+  Future<bool> backupTargetAvailable(String id) async {
+    final t = _backupTargets[id];
+    if (t == null) return false;
+    try {
+      return await t.isAvailable();
+    } catch (_) {
+      return false;
+    }
+  }
+
+  Future<void> setBackupDestination(String id) async {
+    if (!_backupTargets.containsKey(id)) return;
+    _backupPrefs = _backupPrefs.copyWith(destinationId: id);
+    _remoteBackupMeta = null;
+    _remoteMetaChecked = false;
+    _backupError = null;
+    notifyListeners();
+    await _backupPrefsStore.save(_backupPrefs);
+    unawaited(refreshRemoteMeta());
+  }
+
+  Future<void> setBackupFrequency(BackupFrequency frequency) async {
+    _backupPrefs = _backupPrefs.copyWith(frequency: frequency);
+    notifyListeners();
+    await _backupPrefsStore.save(_backupPrefs);
+  }
+
+  /// Manual "Back Up Now". Returns true on success; the message on failure is
+  /// in [backupError].
+  Future<bool> backUpNow() async {
+    if (_backupBusy || _isDemo) return false;
+    _backupBusy = true;
+    _backupError = null;
+    notifyListeners();
+    try {
+      final meta = await _backup.backUpTo(
+        _selectedTarget,
+        deviceLabel: _deviceLabel(),
+        accountEmail: accountEmail,
+      );
+      _backupPrefs = _backupPrefs.copyWith(lastBackupAt: meta.createdAt);
+      _remoteBackupMeta = meta;
+      _remoteMetaChecked = true;
+      await _backupPrefsStore.save(_backupPrefs);
+      return true;
+    } on BackupException catch (e) {
+      _backupError = e.message;
+      return false;
+    } catch (e) {
+      _backupError = 'Backup failed: $e';
+      return false;
+    } finally {
+      _backupBusy = false;
+      notifyListeners();
+    }
+  }
+
+  /// Downloads the newest backup and rehydrates the stores, then reloads the
+  /// controller's in-memory state so the UI reflects the restored data at once.
+  Future<RestoreOutcome?> restoreFromBackup() async {
+    if (_backupBusy || _isDemo) return null;
+    _backupBusy = true;
+    _backupError = null;
+    notifyListeners();
+    try {
+      final outcome = await _backup.restoreFrom(_selectedTarget);
+      if (outcome == null) {
+        _backupError = 'No backup found in ${_selectedTarget.label}.';
+        return null;
+      }
+      await _reloadFromStores();
+      return outcome;
+    } on BackupException catch (e) {
+      _backupError = e.message;
+      return null;
+    } catch (e) {
+      _backupError = 'Restore failed: $e';
+      return null;
+    } finally {
+      _backupBusy = false;
+      notifyListeners();
+    }
+  }
+
+  /// Reads the destination's backup metadata for the summary card.
+  Future<BackupMeta?> refreshRemoteMeta() async {
+    try {
+      final target = _selectedTarget;
+      if (!await target.isAvailable()) {
+        _remoteBackupMeta = null;
+        _remoteMetaChecked = true;
+        notifyListeners();
+        return null;
+      }
+      _remoteBackupMeta = await target.latest();
+    } on BackupException catch (e) {
+      _backupError = e.message;
+    } catch (_) {
+      // Metadata is best-effort; a read failure shouldn't break the screen.
+    }
+    _remoteMetaChecked = true;
+    notifyListeners();
+    return _remoteBackupMeta;
+  }
+
+  /// Fired after a successful sync: backs up opportunistically when the chosen
+  /// frequency says one is due. Best-effort — a backup failure never disrupts
+  /// the sync that triggered it.
+  Future<void> _maybeAutoBackup() async {
+    if (_isDemo || !_backupPrefs.isDue(DateTime.now())) return;
+    await backUpNow();
+  }
+
+  Future<void> _reloadFromStores() async {
+    _settings = await _settingsStore.load();
+    _playbook = await _knowledgeStore.load();
+    final snap = await _store.load();
+    if (snap != null) {
+      _snapshot = snap;
+      _hadInsights = !snap.isEmpty;
+    }
+    notifyListeners();
+  }
+
   SyncEngine _engine(MailSource source, {InsightAi? ai}) =>
       SyncEngine(source: source, ai: ai ?? _ai, store: _store);
 
@@ -153,6 +325,7 @@ class AppController extends ChangeNotifier {
   Future<void> init() async {
     _settings = await _settingsStore.load();
     _playbook = await _knowledgeStore.load();
+    _backupPrefs = await _backupPrefsStore.load();
     final cached = await _store.load();
     if (cached != null && !cached.isEmpty) _snapshot = cached;
     _hadInsights = !_snapshot.isEmpty;
@@ -252,6 +425,9 @@ class AppController extends ChangeNotifier {
     _stageDetail = null;
     _phase = AppPhase.ready;
     notifyListeners();
+
+    // Opportunistic backup after a clean sync, if one is due.
+    if (_error == null) unawaited(_maybeAutoBackup());
   }
 
   /// Runs after every successful sync: fire the first-data celebration and
