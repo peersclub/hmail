@@ -97,6 +97,46 @@ reason. Users see every recipe under Settings → Knowledge and can disable or
 forget it; disabled ones still count as "known" so the learner never pays to
 rediscover a rejected recipe.
 
+## Where a tap goes
+
+Every action resolves to one of three destinations, decided by
+`domain/deep_links.dart`:
+
+1. **The native app** — when a probe found it. `core/installed_apps.dart`
+   tests ~45 custom schemes once per session (declared in
+   `LSApplicationQueriesSchemes`, iOS caps this at 50) and caches the result;
+   the sweep is warmed at startup so a sheet never waits on it.
+2. **An in-app WebView** — public pages, kept inside NoMail so we can ask
+   whether the link was right.
+3. **iOS** — non-http schemes, payments, and anything behind a login.
+
+Four constraints shape that, and each one cost a bug to learn:
+
+- **iOS cannot tell you whether an app claims an https URL.** `canLaunchUrl`
+  on https always says yes, because Safari can open it. So detection runs on
+  custom schemes while the thing we *launch* stays the https universal link —
+  which matters because of only 44 catalogued apps just 5 publish a
+  documented launch format. No Indian courier or merchant does, so a
+  constructed `delhivery://…` would fail silently where the universal link
+  works.
+- **A WKWebView has no cookies.** Gmail, banks and billing pages render
+  logged-out inside it, which is indistinguishable from a broken link — and
+  would have users voting down correct URLs. Known auth hosts never reach the
+  WebView; unknown ones are caught on arrival by the landed URL and title and
+  recorded as `loginWall`, which is explicitly *not* counted against a recipe.
+- **A WKWebView never fires universal links.** Rendering an unknown
+  merchant's page in-app therefore *guarantees* bypassing their app. The fix
+  is memory rather than a bigger registry (which iOS caps anyway):
+  `core/host_routing.dart` remembers hosts the user tapped "open outside" on,
+  and hands them to iOS forever after.
+- **Say where a tap goes before it is taken.** Each sheet row ends with the
+  app's mark and name, a globe for "stays in NoMail", or an out-arrow for
+  "leaves" — via the pure `destinationHint()`.
+
+`domain/link_feedback.dart` closes the loop: a thumbs-down on a page marks
+the learned recipe that produced the URL as suspect (≥2 failures, no
+successes), which is the only signal that a template the AI wrote is wrong.
+
 ## Presentation
 
 Typed models are mapped once into a generic `Insight` (domain, weight,

@@ -8,9 +8,10 @@ resolves it.
 - **Repo:** `peersclub/hmail` — local at `/Users/Victor/Projects22/hmail`
 - **Stack:** Flutter (iOS-first), Provider, Gmail API (read-only),
   OpenRouter for the AI layer, `url_launcher` for deep links
-- **Status (2026-08-02):** running on device and simulator against real
-  Gmail. Four tabs (Today · Money · Timeline · Settings), multi-account,
-  an AI audit pass, and a playbook the app extends by itself. 281 tests green.
+- **Status (2026-08-02):** running on iPhone and iPad against real Gmail.
+  Four tabs (Today · Money · Timeline · Settings), multi-account, an AI audit
+  pass, a playbook the app extends by itself, and link routing that opens the
+  app you actually have. 367 tests green.
 
 ## Map
 
@@ -26,6 +27,7 @@ resolves it.
 - [[Actions API]] — how an insight becomes a tappable action
 - [[Settings Plan]] — Settings as the trust surface, and why each control is
   a paid-tier feature
+- [[Backup & Restore]] — iCloud and Google Drive backup
 - [[Development Log]] — dated record of every session
 
 ## The one-paragraph version

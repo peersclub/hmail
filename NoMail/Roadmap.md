@@ -35,6 +35,10 @@ processing/audit log, learned-knowledge management. See [[Settings Plan]].
 several-hundred-request scan, partial-failure tolerance, live progress
 reporting, notifications, Drive/iCloud backup.
 
+**Link routing** — installed-app detection across 44 apps, the in-app WebView
+with its feedback loop, per-host "open outside" memory, and a destination
+marker on every action row. See [[Architecture]].
+
 ## Next
 
 **Ship-blocking**
@@ -45,9 +49,8 @@ reporting, notifications, Drive/iCloud backup.
 - [ ] Rotate the OpenRouter key and set a monthly spend cap
 
 **Product**
-- [ ] Show the destination app on each action ("Opens in Delhivery") with its
-      icon, and detect what is installed — needs `LSApplicationQueriesSchemes`
-      in `Info.plist`
+- [ ] Act on the link-feedback signal: surface `isSuspect` recipes in Settings →
+      Knowledge so a bad AI-written URL template is visible, not just recorded
 - [ ] Per-insight feedback ("this isn't a bill") feeding a local ignore list —
       turns corrections into training data with no server
 - [ ] Pre-scan cost estimate ("~200 emails, about ₹2")
@@ -55,7 +58,16 @@ reporting, notifications, Drive/iCloud backup.
       (ranked highest-ROI iOS surfaces in [[One App Vision]])
 
 **Quality**
+- [ ] iPad layout: the glass system was laid out for phone widths, and the app
+      builds as a native iPad app (`TARGETED_DEVICE_FAMILY = "1,2"`) — the
+      action sheet and WebView chrome stretch
 - [ ] On-device VoiceOver audit of Timeline chip drag-reorder
 - [ ] Pin the Timeline chip row (needs a sliver refactor)
+
+**Known limits**
+- Personal Apple team: builds expire ~7 days and iCloud backup needs a paid
+  membership (see `a3a6cdf`)
+- Detection is capped at 50 URL schemes by iOS; 45 used. Beyond that, growth
+  comes from per-host memory rather than the registry
 
 Related: [[Requirements]], [[Architecture]], [[Development Log]]

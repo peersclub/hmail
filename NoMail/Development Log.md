@@ -292,3 +292,57 @@ Multi-account runs append "(account 2)" so the counter restarting makes sense.
 
 281 tests green, on device.
 
+## 2026-08-02 — Links open the app you actually have (`95089fd` → `ca588c9`)
+
+The user noticed the deep-link work had never shipped: `deep_links.dart` did
+not exist, `Info.plist` had no `LSApplicationQueriesSchemes`, nothing called
+`canLaunchUrl`. Universal links *were* reaching apps, but only because iOS
+does that for free — nothing deliberate. Built it properly, in four commits.
+
+**Detection (`95089fd`).** A 44-app catalog (`domain/app_targets.dart`) with
+probe schemes, plus `core/installed_apps.dart` sweeping them once per session.
+The design point: iOS gives no way to ask whether an app claims an https URL,
+so detection uses custom schemes while the launch stays the universal link.
+Research bore that out — of 44 apps only **5** publish a documented launch
+format (Uber, Ola, Google Maps, Zoom, Google Pay); no Indian courier or
+merchant does. A guessed `delhivery://` would have failed silently.
+
+Same commit: the in-app WebView (`webview_flutter`, not
+`LaunchMode.inAppBrowserView` — SFSafariViewController gives no callbacks, so
+no feedback), and `domain/link_feedback.dart`, where a thumbs-down marks the
+learned recipe that produced the URL as suspect. That is the first real
+signal on whether a template the AI wrote is actually correct.
+
+The trap that shaped it: a WKWebView carries none of Safari's cookies, so an
+auth-gated page renders logged-out and looks exactly like a wrong page. Left
+alone, users would have voted down correct links. Known auth hosts skip the
+WebView entirely; unknown ones are caught on arrival and recorded as
+`loginWall`, deliberately excluded from `isFailure`. A test pins that two
+login walls leave a recipe unsuspected while a login wall plus two genuine
+wrong-page votes still flags it — the exclusion must not become a hiding
+place.
+
+**"Every click goes to the browser" (`b72736a`).** Reported, and true: a
+trace over every action the pipeline produces showed **23 of 24** going
+external. The cause was not the WebView — it was that **Gmail was not in the
+catalog at all**. The most common action in the app is "Open email" →
+`mail.google.com`, undetectable, unlabelled, so every one of them looked like
+a trip to Safari. Adding `googlegmail://` and `googlecalendar://` (45 schemes,
+still under the cap) moved 17 of 24 to the native app. Also dropped `manage`
+from the blanket kind-block — the big billing pages were already covered by
+the host list, and blocking the kind sent unknown services to Safari too.
+
+**Telling the user (`d79bc67`).** Only the app case had been signposted, so a
+row gave no clue whether it would stay or leave. Every row now ends with the
+same marker: brand mark + name, a globe for "in NoMail", an out-arrow for
+"leaves". Extracted as a pure `destinationHint()` so a test can assert the
+three outcomes render three *distinct* icons.
+
+**Teaching it per-host (`ca588c9`, concurrent session).** The remaining gap
+is structural: a WKWebView never fires universal links, so an unknown
+merchant rendered in-app is *guaranteed* to bypass their app, and the probe
+registry can never grow past 50 schemes. `core/host_routing.dart` makes it
+learnable instead — one "open outside" tap remembers the host.
+
+367 tests, analyzer clean, on iPhone and iPad.
+
