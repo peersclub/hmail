@@ -25,15 +25,24 @@ class MultiGmailSource implements MailSource {
   MultiGmailSource(this.apis, {this.settings = const ScanSettings()});
 
   @override
-  Future<List<EmailMeta>> fetchCandidates() async {
+  Future<List<EmailMeta>> fetchCandidates({
+    void Function(String detail)? onProgress,
+  }) async {
     final merged = <EmailMeta>[];
     final seen = <String>{};
 
     for (var index = 0; index < apis.length; index++) {
       final prefix = 'a$index:';
+      // With several inboxes, say which one — otherwise the progress line
+      // appears to restart for no reason.
+      final scope = apis.length > 1 ? ' (account ${index + 1})' : '';
       try {
-        final candidates =
-            await GmailSource(apis[index], settings: settings).fetchCandidates();
+        final candidates = await GmailSource(apis[index], settings: settings)
+            .fetchCandidates(
+          onProgress: onProgress == null
+              ? null
+              : (detail) => onProgress('$detail$scope'),
+        );
         for (final email in candidates) {
           final id = '$prefix${email.id}';
           if (!seen.add(id)) continue;

@@ -109,22 +109,26 @@ List<Insight> snapshotToInsights(InsightSnapshot s) {
 
   for (final t in s.upcomingTravel) {
     final ref = t.code == null ? null : 'Ref ${t.code}';
+    // Check-in open / boarding pass ready is the pressing state: it outranks a
+    // plain confirmed trip and leads with the check-in action.
     out.add(Insight(
       id: 'travel:${t.sourceEmailId}',
       domain: InsightDomain.travel,
       title: t.route ?? t.provider,
-      subtitle: t.route != null
-          ? [t.provider, if (ref != null) ref].join(' · ')
-          : (ref ?? _travelLabel(t.kind)),
+      subtitle: t.boardingReady
+          ? 'Check-in open'
+          : (t.route != null
+              ? [t.provider, if (ref != null) ref].join(' · ')
+              : (ref ?? _travelLabel(t.kind))),
       caption: t.departure == null ? null : formatDay(t.departure!),
       anchorDate: t.departure,
-      icon: CupertinoIcons.airplane,
+      icon: t.boardingReady ? CupertinoIcons.ticket_fill : CupertinoIcons.airplane,
       brandKey: t.provider,
-      weight: 65,
+      weight: t.boardingReady ? 80 : 65,
       actions: [
         if (t.manageUrl != null)
           InsightAction(
-            label: 'Manage booking',
+            label: t.boardingReady ? 'Check in' : 'Manage booking',
             uri: Uri.parse(t.manageUrl!),
             kind: ActionKind.openLink,
           ),

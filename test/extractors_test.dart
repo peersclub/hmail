@@ -391,6 +391,28 @@ void travelTests() {
       expect(r.travel, isNotEmpty);
       expect(r.deliveries, isEmpty);
     });
+
+    test('"check-in is now open" flags the trip as boarding-ready', () {
+      final t = extractTravel(e(
+        from: 'IndiGo <noreply@goindigo.in>',
+        subject: 'Web check-in is now open, PNR Z8M3T1',
+        body: 'Web check-in is now open. Download your boarding pass. PNR Z8M3T1.',
+      ));
+      expect(t, isNotNull);
+      expect(t!.boardingReady, isTrue);
+    });
+
+    test('"check-in opens 48 hours before" is future-tense, not ready', () {
+      final t = extractTravel(e(
+        from: 'IndiGo <noreply@goindigo.in>',
+        subject: 'Your e-ticket, PNR X4K9Q2',
+        body: 'Booking confirmed. PNR X4K9Q2. '
+            'Web check-in opens 48 hours before departure.',
+      ));
+      expect(t, isNotNull);
+      expect(t!.boardingReady, isFalse,
+          reason: 'a distant confirmed flight must not escalate');
+    });
   });
 }
 

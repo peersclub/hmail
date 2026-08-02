@@ -35,14 +35,16 @@ class SyncEngine {
     Playbook playbook = Playbook.empty,
     KnowledgeLearner? learner,
     void Function(SyncStage stage)? onStage,
+    void Function(String detail)? onDetail,
   }) async {
     final startedAt = DateTime.now();
     final clock = Stopwatch()..start();
 
     onStage?.call(SyncStage.fetching);
-    final emails = await source.fetchCandidates();
+    final emails = await source.fetchCandidates(onProgress: onDetail);
 
     onStage?.call(SyncStage.extracting);
+    onDetail?.call('Reading ${emails.length} emails for insights');
     final extracted = runExtractors(emails);
 
     // Learned knowledge runs on whatever the hand-written rules didn't claim.
@@ -94,6 +96,8 @@ class SyncEngine {
 
     if (settings.aiEnabled && ai.isConfigured) {
       onStage?.call(SyncStage.auditing);
+      onDetail?.call(
+          'Checking ${snapshot.subscriptions.length + snapshot.bills.length + snapshot.deliveries.length + snapshot.events.length} results with AI');
       final preAudit = snapshot;
       final aiResult = await ai.analyze(
         extracted: snapshot,
@@ -131,6 +135,8 @@ class SyncEngine {
         learner.isConfigured &&
         stillUnclaimed.isNotEmpty) {
       onStage?.call(SyncStage.learning);
+      onDetail?.call(
+          'Studying ${stillUnclaimed.length} unrecognised email${stillUnclaimed.length == 1 ? '' : 's'}');
       final result = await learner.learn(
         unclaimed: stillUnclaimed,
         known: playbook,
@@ -145,6 +151,7 @@ class SyncEngine {
     }
 
     onStage?.call(SyncStage.saving);
+    onDetail?.call('Saving');
     await store.save(snapshot);
 
     clock.stop();

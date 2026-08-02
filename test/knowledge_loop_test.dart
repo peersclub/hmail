@@ -55,7 +55,10 @@ class OnlyEmails implements MailSource {
   final List<EmailMeta> emails;
   OnlyEmails(this.emails);
   @override
-  Future<List<EmailMeta>> fetchCandidates() async => emails;
+  Future<List<EmailMeta>> fetchCandidates({
+    void Function(String detail)? onProgress,
+  }) async =>
+      emails;
 }
 
 void main() {

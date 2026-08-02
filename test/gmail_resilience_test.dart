@@ -62,11 +62,14 @@ class FakeGmailClient extends http.BaseClient {
 
 GmailSource sourceWith(FakeGmailClient client) => GmailSource(
       GmailApi(client),
-      // One query keeps the call counting easy to reason about.
+      // Exactly one query keeps the call counting easy to reason about, so
+      // every domain except packages is switched off explicitly.
       settings: const ScanSettings(
         scanMoney: false,
-        scanEvents: false,
         scanDeliveries: true,
+        scanEvents: false,
+        scanReads: false,
+        scanTravel: false,
       ),
     );
 
@@ -134,5 +137,53 @@ void main() {
     failNext = false;
     await source.fetchCandidates();
     expect(source.failures, 0, reason: 'a clean scan must report clean');
+  });
+
+  group('live progress', () {
+    test('reports the query it is searching and messages as they arrive',
+        () async {
+      final client = FakeGmailClient((_, __) => null);
+      final details = <String>[];
+
+      await sourceWith(client).fetchCandidates(onProgress: details.add);
+
+      expect(details.first, 'Searching packages (1 of 1)');
+      expect(details.last, contains('Reading packages'));
+      expect(details.last, contains('3 of 3'));
+    });
+
+    test('a failed search says so rather than going silent', () async {
+      final client = FakeGmailClient((index, url) =>
+          url.path.endsWith('/messages') && !url.path.contains('/messages/')
+              ? http.ClientException('Bad file descriptor')
+              : null);
+      final details = <String>[];
+
+      await expectLater(
+        sourceWith(client).fetchCandidates(onProgress: details.add),
+        throwsA(isA<StateError>()),
+      );
+      expect(details.any((d) => d.contains('failed')), isTrue);
+    });
+
+    test('progress labels name each enabled domain', () async {
+      final client = FakeGmailClient((_, __) => null);
+      final details = <String>[];
+
+      await GmailSource(
+        GmailApi(client),
+        settings: const ScanSettings(
+          scanMoney: true,
+          scanDeliveries: true,
+          scanEvents: false,
+          scanReads: false,
+          scanTravel: false,
+        ),
+      ).fetchCandidates(onProgress: details.add);
+
+      expect(details.any((d) => d.contains('receipts')), isTrue);
+      expect(details.any((d) => d.contains('bills')), isTrue);
+      expect(details.any((d) => d.contains('packages')), isTrue);
+    });
   });
 }

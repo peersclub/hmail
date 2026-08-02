@@ -79,6 +79,15 @@ class AppController extends ChangeNotifier {
   /// What the pipeline is doing right now — drives the live Settings row.
   SyncStage get stage => _stage;
 
+  String? _stageDetail;
+
+  /// The specific thing happening inside [stage] ("Reading packages · 15 of
+  /// 50"). Null between syncs.
+  String? get stageDetail => _stageDetail;
+
+  /// One line for the header: the detail when there is one, else the stage.
+  String get activityLine => _stageDetail ?? _stage.label;
+
   AppPhase get phase => _phase;
   InsightSnapshot get snapshot => _snapshot;
   bool get isDemo => _isDemo;
@@ -221,6 +230,10 @@ class AppController extends ChangeNotifier {
           _stage = stage;
           notifyListeners();
         },
+        onDetail: (detail) {
+          _stageDetail = detail;
+          notifyListeners();
+        },
       );
       _snapshot = result.snapshot;
       _lastReport = result.report;
@@ -236,6 +249,7 @@ class AppController extends ChangeNotifier {
     }
 
     _stage = _error == null ? SyncStage.done : SyncStage.failed;
+    _stageDetail = null;
     _phase = AppPhase.ready;
     notifyListeners();
   }

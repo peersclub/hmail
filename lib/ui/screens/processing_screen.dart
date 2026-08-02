@@ -51,7 +51,7 @@ class ProcessingScreen extends StatelessWidget {
                           ],
                           Expanded(
                             child: Text(
-                              busy ? app.stage.label : report.headline,
+                              busy ? app.activityLine : report.headline,
                               style: TextStyle(
                                 fontSize: 18,
                                 fontWeight: FontWeight.w600,
@@ -63,7 +63,16 @@ class ProcessingScreen extends StatelessWidget {
                           ),
                         ],
                       ),
-                      if (!report.neverSynced) ...[
+                      if (busy) ...[
+                        const SizedBox(height: 6),
+                        Text(
+                          app.stage.label,
+                          style: TextStyle(
+                            fontSize: 13,
+                            color: Palette.secondaryLabel(context),
+                          ),
+                        ),
+                      ] else if (!report.neverSynced) ...[
                         const SizedBox(height: 6),
                         Text(
                           'Last scan ${formatDay(report.startedAt)} · '

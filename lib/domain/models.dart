@@ -528,6 +528,10 @@ class TravelItem {
   final String sourceEmailId;
   final String? manageUrl;
 
+  /// True when check-in is open *now* or a boarding pass is ready — the trip's
+  /// action has become time-critical, distinct from a distant confirmed flight.
+  final bool boardingReady;
+
   const TravelItem({
     required this.kind,
     required this.provider,
@@ -537,6 +541,7 @@ class TravelItem {
     required this.lastSeen,
     required this.sourceEmailId,
     this.manageUrl,
+    this.boardingReady = false,
   });
 
   /// Past trips fall off after a fortnight.
@@ -558,6 +563,7 @@ class TravelItem {
         'lastSeen': lastSeen.toIso8601String(),
         'sourceEmailId': sourceEmailId,
         'manageUrl': manageUrl,
+        'boardingReady': boardingReady,
       };
 
   factory TravelItem.fromJson(Map<String, dynamic> json) => TravelItem(
@@ -574,6 +580,7 @@ class TravelItem {
         lastSeen: DateTime.parse(json['lastSeen'] as String),
         sourceEmailId: json['sourceEmailId'] as String,
         manageUrl: json['manageUrl'] as String?,
+        boardingReady: json['boardingReady'] as bool? ?? false,
       );
 }
 

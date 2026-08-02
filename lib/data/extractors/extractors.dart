@@ -711,6 +711,19 @@ TravelItem? extractTravel(EmailMeta email) {
   }
   departure ??= extractDate(hay, anchor: email.date);
 
+  // Check-in *open now* / boarding pass ready — the time-critical state.
+  // "check-in opens 48 hours before" is future-tense and must NOT match.
+  const boardingSignals = [
+    'boarding pass',
+    'check-in is open', 'check in is open',
+    'check-in is now open', 'check in is now open',
+    'web check-in is open', 'online check-in is open',
+    'you can now check in', 'you can now web check-in',
+    'download your boarding pass', 'your boarding pass is ready',
+    'check-in now open', 'check in now open',
+  ];
+  final boardingReady = boardingSignals.any(hay.contains);
+
   return TravelItem(
     kind: kind,
     provider: provider,
@@ -719,6 +732,7 @@ TravelItem? extractTravel(EmailMeta email) {
     departure: departure,
     lastSeen: email.date,
     sourceEmailId: email.id,
+    boardingReady: boardingReady,
     manageUrl: extractActionUrl(
       email,
       keywords: ['manage', 'web check-in', 'view itinerary', 'view booking', 'check-in'],

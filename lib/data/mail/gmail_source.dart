@@ -20,9 +20,14 @@ class GmailSource implements MailSource {
   /// keep tight windows regardless of [ScanSettings.historyDays] — a bill
   /// from last year is history, not a task — while receipts honour it so
   /// annual renewals surface.
-  static List<String> queriesFor(ScanSettings settings) {
+  static List<String> queriesFor(ScanSettings settings) =>
+      [for (final planned in plannedQueries(settings)) planned.query];
+
+  /// The same queries, each with the name the user sees while it runs.
+  static List<({String label, String query})> plannedQueries(
+      ScanSettings settings) {
     final history = settings.historyDays;
-    return [
+    final queries = <String>[
       if (settings.scanMoney) ...[
         'subject:(receipt OR renewal OR subscription OR "payment successful" OR invoice OR refund OR "payment failed" OR declined) newer_than:${history}d',
         'subject:(bill OR due OR statement) newer_than:${_clamp(history, 60)}d',
@@ -37,6 +42,20 @@ class GmailSource implements MailSource {
       if (settings.scanTravel)
         '{from:makemytrip.com from:goindigo.in from:cleartrip.com from:irctc.co.in subject:pnr subject:"e-ticket" subject:itinerary subject:"booking confirmed" subject:"boarding pass"} newer_than:${_clamp(history, 120)}d',
     ];
+
+    // Labels track the same conditions, in the same order, as the queries.
+    final labels = <String>[
+      if (settings.scanMoney) ...['receipts', 'bills'],
+      if (settings.scanDeliveries) 'packages',
+      if (settings.scanEvents) 'meetings',
+      if (settings.scanReads) 'reads',
+      if (settings.scanTravel) 'travel',
+    ];
+
+    return [
+      for (var i = 0; i < queries.length; i++)
+        (label: labels[i], query: queries[i]),
+    ];
   }
 
   static int _clamp(int history, int cap) => history < cap ? history : cap;
@@ -49,26 +68,35 @@ class GmailSource implements MailSource {
   /// returns most of the mail is worth far more than one that returns an
   /// error. [failures] counts what was lost.
   @override
-  Future<List<EmailMeta>> fetchCandidates({int? maxPerQuery}) async {
+  Future<List<EmailMeta>> fetchCandidates({
+    int? maxPerQuery,
+    void Function(String detail)? onProgress,
+  }) async {
     final seen = <String>{};
     final results = <EmailMeta>[];
     final perQuery = maxPerQuery ?? settings.maxEmailsPerQuery;
     failures = 0;
 
-    for (final query in queriesFor(settings)) {
+    final planned = plannedQueries(settings);
+    for (var q = 0; q < planned.length; q++) {
+      final label = planned[q].label;
+      onProgress?.call('Searching $label (${q + 1} of ${planned.length})');
+
       final List<Message> refs;
       try {
         final list = await api.users.messages.list(
           'me',
-          q: query,
+          q: planned[q].query,
           maxResults: perQuery,
         );
         refs = list.messages ?? const <Message>[];
       } catch (_) {
         failures++;
+        onProgress?.call('Search for $label failed — carrying on');
         continue;
       }
 
+      var read = 0;
       for (final ref in refs) {
         final id = ref.id;
         if (id == null || !seen.add(id)) continue;
@@ -79,6 +107,12 @@ class GmailSource implements MailSource {
           if (meta != null) results.add(meta);
         } catch (_) {
           failures++;
+        }
+        read++;
+        // Every message would be a rebuild per request; every fifth keeps
+        // the number moving without thrashing the UI.
+        if (read % 5 == 0 || read == refs.length) {
+          onProgress?.call('Reading $label · $read of ${refs.length}');
         }
       }
     }

@@ -12,6 +12,7 @@ import '../../state/app_controller.dart';
 import '../format.dart';
 import '../glass/glass.dart';
 import '../insight_card.dart';
+import 'processing_screen.dart';
 
 /// Today — the morning-glance screen. Brief, counts, and everything that
 /// needs the user's attention in the next ten days.
@@ -50,7 +51,7 @@ class TodayScreen extends StatelessWidget {
                 eyebrow: DateFormat('EEEE, d MMMM').format(DateTime.now()),
                 title: 'Today',
                 trailing: app.phase == AppPhase.syncing
-                    ? const CupertinoActivityIndicator()
+                    ? _busyBadge(context)
                     : _accountBubble(context, app),
               ),
             ],
@@ -66,6 +67,7 @@ class TodayScreen extends StatelessWidget {
               if (app.isDemo)
                 const Footnote(
                     'Demo data — sign in with Google for your own insights.'),
+              if (app.phase == AppPhase.syncing) _activityLine(context, app),
               if (app.showMoneyShot) _moneyShotCard(context, app),
               if (snapshot.brief != null)
                 _briefCard(context, snapshot.brief!,
@@ -119,6 +121,61 @@ class TodayScreen extends StatelessWidget {
 
 
 
+
+  /// A running scan is hundreds of requests and can take a while. Saying
+  /// which one, in place, is the difference between "working" and "stuck".
+  Widget _activityLine(BuildContext context, AppController app) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: () => Navigator.of(context, rootNavigator: true).push(
+          CupertinoPageRoute<void>(builder: (_) => const ProcessingScreen()),
+        ),
+        child: GlassCard(
+          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+          child: Row(
+            children: [
+              const CupertinoActivityIndicator(radius: 9),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  app.activityLine,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 15,
+                    color: Palette.label(context),
+                  ),
+                ),
+              ),
+              Icon(
+                CupertinoIcons.chevron_right,
+                size: 15,
+                color: Palette.tertiaryLabel(context),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// The spinner is where people look when they wonder whether the app has
+  /// hung, so it answers: tap it for the live pipeline.
+  Widget _busyBadge(BuildContext context) {
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: () => Navigator.of(context, rootNavigator: true).push(
+        CupertinoPageRoute<void>(builder: (_) => const ProcessingScreen()),
+      ),
+      child: const SizedBox(
+        width: 36,
+        height: 36,
+        child: Center(child: CupertinoActivityIndicator()),
+      ),
+    );
+  }
 
   Widget _accountBubble(BuildContext context, AppController app) {
     return Container(

@@ -1,5 +1,18 @@
 # Development Log
 
+## 2026-08-02 — Boarding passes / check-in windows
+
+Extended the **travel** domain (no new domain, no native code) so the pressing moment — *check-in open now / boarding pass ready* — outranks a distant confirmed flight.
+
+- `TravelItem.boardingReady` (additive bool, default false; JSON round-trips).
+- `extractTravel` sets it on "check-in is (now) open", "boarding pass", "download your boarding pass", etc. The future-tense "web check-in **opens** 48 hours before" is deliberately **not** matched, so a plain confirmed flight doesn't escalate.
+- Mapper: when `boardingReady`, weight 65 → **80**, subtitle "Check-in open", icon `ticket_fill`, primary action "Check in".
+- Demo fixture: IndiGo "Web check-in is now open" (PNR Z8M3T1, distinct from the confirmed-flight fixture so they don't dedupe). Two extractor tests pin the open-vs-future distinction.
+
+The **full PassKit / `.pkpass` "Add to Apple Wallet"** flow remains the one genuinely native follow-up — this ships the user-facing value (check-in escalation + right action) without it.
+
+283 tests pass, analyze clean, reinstalled to the iPhone.
+
 ## 2026-08-02 — Multi-account + Returns/warranty domain (commit `fb70aae`)
 
 Two subsystems landed in one commit, plus a regression fix.

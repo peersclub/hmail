@@ -6,12 +6,18 @@ import '../../domain/models.dart';
 /// pipeline with fixture emails, so demo mode exercises the real extractors
 /// rather than rendering canned results.
 abstract interface class MailSource {
-  Future<List<EmailMeta>> fetchCandidates();
+  /// [onProgress] receives short human sentences ("Reading packages · 12 of
+  /// 50") so the app can say what it is doing while a long scan runs.
+  Future<List<EmailMeta>> fetchCandidates({
+    void Function(String detail)? onProgress,
+  });
 }
 
 class DemoMailSource implements MailSource {
   @override
-  Future<List<EmailMeta>> fetchCandidates() async {
+  Future<List<EmailMeta>> fetchCandidates({
+    void Function(String detail)? onProgress,
+  }) async {
     final now = DateTime.now();
     String day(DateTime date) =>
         '${date.day} ${const ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][date.month - 1]} ${date.year}';
@@ -209,6 +215,17 @@ class DemoMailSource implements MailSource {
         body:
             'Booking confirmed. PNR: X4K9Q2. Departure BLR → DEL on ${day(now.add(const Duration(days: 2)))}. Web check-in opens 48 hours before departure: https://goindigo.in/web-check-in',
         date: now.subtract(const Duration(days: 6)),
+      ),
+      EmailMeta(
+        id: 'demo-checkin',
+        from: 'IndiGo <noreply@goindigo.in>',
+        subject: 'Web check-in is now open — DEL to BLR, PNR Z8M3T1',
+        snippet: 'Check in and get your boarding pass.',
+        body:
+            'Web check-in is now open for your flight. PNR: Z8M3T1. '
+            'Departure DEL → BLR on ${day(now.add(const Duration(days: 1)))}. '
+            'Check in now and download your boarding pass: https://goindigo.in/web-check-in',
+        date: now.subtract(const Duration(hours: 2)),
       ),
       EmailMeta(
         id: 'demo-yt',
