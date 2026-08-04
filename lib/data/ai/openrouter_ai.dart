@@ -3,6 +3,8 @@ import 'dart:convert';
 import 'package:dio/dio.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 
+import '../../core/ai_key.dart';
+
 import '../../domain/models.dart';
 import 'insight_ai.dart';
 
@@ -20,7 +22,7 @@ class OpenRouterAi implements InsightAi {
   static const _defaultModel = 'anthropic/claude-haiku-4.5';
 
   String? get _apiKey {
-    final key = dotenv.maybeGet('OPENROUTER_API_KEY')?.trim();
+    final key = AiKey.value;
     return (key == null || key.isEmpty) ? null : key;
   }
 

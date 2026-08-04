@@ -8,6 +8,7 @@ library;
 import 'package:flutter/cupertino.dart';
 import 'package:provider/provider.dart';
 
+import '../../core/ai_key.dart';
 import '../../core/palette.dart';
 import '../../data/ai/ai_status.dart';
 import '../../state/app_controller.dart';
@@ -39,6 +40,96 @@ class _AiScreenState extends State<AiScreen> {
       _usage = usage;
       _loadingUsage = false;
     });
+  }
+
+  /// Add / replace / remove the OpenRouter key, in-app. The old copy told
+  /// users to edit .env — an instruction no phone user can follow.
+  Future<void> _keyOptions(BuildContext context) async {
+    final userProvided = AiKey.isUserProvided;
+    final hasKey = AiKey.value != null;
+
+    if (!hasKey) {
+      await _enterKey(context);
+      return;
+    }
+    final action = await showCupertinoModalPopup<String>(
+      context: context,
+      builder: (sheetContext) => CupertinoActionSheet(
+        title: const Text('OpenRouter key'),
+        actions: [
+          CupertinoActionSheetAction(
+            onPressed: () => Navigator.pop(sheetContext, 'replace'),
+            child: const Text('Replace key…'),
+          ),
+          // Only offer to remove a key this app actually stores — the .env
+          // fallback isn't removable from here.
+          if (userProvided)
+            CupertinoActionSheetAction(
+              isDestructiveAction: true,
+              onPressed: () => Navigator.pop(sheetContext, 'remove'),
+              child: const Text('Remove key'),
+            ),
+        ],
+        cancelButton: CupertinoActionSheetAction(
+          isDefaultAction: true,
+          onPressed: () => Navigator.pop(sheetContext),
+          child: const Text('Cancel'),
+        ),
+      ),
+    );
+    if (!context.mounted) return;
+    if (action == 'replace') {
+      await _enterKey(context);
+    } else if (action == 'remove') {
+      await AiKey.clear();
+      if (mounted) setState(() => _test = null);
+      _loadUsage();
+    }
+  }
+
+  Future<void> _enterKey(BuildContext context) async {
+    final controller = TextEditingController();
+    final saved = await showCupertinoDialog<bool>(
+      context: context,
+      builder: (dialogContext) => CupertinoAlertDialog(
+        title: const Text('OpenRouter key'),
+        content: Column(
+          children: [
+            const SizedBox(height: 8),
+            const Text(
+              'Create a key at openrouter.ai → Keys, set a spending cap, '
+              'and paste it here. Stored only on this device.',
+            ),
+            const SizedBox(height: 12),
+            CupertinoTextField(
+              controller: controller,
+              placeholder: 'sk-or-…',
+              autocorrect: false,
+              enableSuggestions: false,
+              autofocus: true,
+            ),
+          ],
+        ),
+        actions: [
+          CupertinoDialogAction(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Cancel'),
+          ),
+          CupertinoDialogAction(
+            isDefaultAction: true,
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('Save'),
+          ),
+        ],
+      ),
+    );
+    final key = controller.text.trim();
+    if (saved == true && key.isNotEmpty) {
+      await AiKey.save(key);
+      if (mounted) setState(() => _test = null);
+      // The saved key changes what usage/status report — refresh both.
+      _loadUsage();
+    }
   }
 
   Future<void> _runTest() async {
@@ -78,11 +169,16 @@ class _AiScreenState extends State<AiScreen> {
                   GlassRow(
                     icon: configured
                         ? CupertinoIcons.checkmark_seal_fill
-                        : CupertinoIcons.exclamationmark_triangle,
-                    iconTint: configured ? null : Palette.destructive(context),
-                    title: configured ? 'Key configured' : 'No key',
+                        : CupertinoIcons.lock_circle,
+                    iconTint: configured ? null : Palette.accent(context),
+                    title: configured ? 'Key configured' : 'Add your key',
                     subtitle: status.maskedKey ??
-                        'Add OPENROUTER_API_KEY to .env to enable AI',
+                        'Paste an OpenRouter API key to turn on AI '
+                            '(openrouter.ai → Keys)',
+                    subtitleMaxLines: 2,
+                    trailingCaption: configured ? 'Change' : 'Add',
+                    trailingCaptionColor: Palette.accent(context),
+                    onTap: () => _keyOptions(context),
                   ),
                   GlassRow(
                     icon: CupertinoIcons.cube,

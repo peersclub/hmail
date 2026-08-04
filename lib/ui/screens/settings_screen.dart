@@ -85,7 +85,7 @@ class SettingsScreen extends StatelessWidget {
               subtitle: !app.settings.aiEnabled
                   ? 'Off — rules only'
                   : (app.aiLabel == 'off'
-                      ? 'No key — add OPENROUTER_API_KEY'
+                      ? 'No key — tap to add your OpenRouter key'
                       : app.aiLabel),
               subtitleMaxLines: 2,
               onTap: () => _push(context, const AiScreen()),

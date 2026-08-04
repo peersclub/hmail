@@ -24,6 +24,7 @@
 ///   OPENROUTER_MODEL=anthropic/claude-haiku-4.5   (optional override)
 library;
 
+import '../../core/ai_key.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 
@@ -210,8 +211,8 @@ class AiStatusService {
 
   /// The raw key, or null when unset or blank. Never leaves this class.
   String? get _apiKey {
-    final key = _env('OPENROUTER_API_KEY')?.trim();
-    return (key == null || key.isEmpty) ? null : key;
+    // User-entered key (Settings → AI) wins over the developer .env.
+    return AiKey.value;
   }
 
   /// Whether a key is present at all.
@@ -269,7 +270,7 @@ class AiStatusService {
     if (key == null) {
       return const AiConnectionResult(
         ok: false,
-        error: 'No API key set — add OPENROUTER_API_KEY',
+        error: 'No API key set — add your OpenRouter key in Settings → AI',
       );
     }
 
@@ -352,7 +353,7 @@ class AiStatusService {
     final code = e.response?.statusCode;
     switch (code) {
       case 401:
-        return 'Key rejected — check OPENROUTER_API_KEY';
+        return 'Key rejected — check your OpenRouter key';
       case 402:
         return 'Out of credits';
       case 429:

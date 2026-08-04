@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 
 import '../core/action_launcher.dart';
+import '../core/ai_key.dart';
 import '../core/notification_service.dart';
 import '../ui/action_sheet.dart' show installedApps;
 import '../data/ai/ai_status.dart';
@@ -521,6 +522,7 @@ class AppController extends ChangeNotifier {
   /// App start: render the cached snapshot instantly, resume the Google
   /// session silently, then refresh in the background.
   Future<void> init() async {
+    await AiKey.load(); // user-entered key must beat the .env fallback
     _settings = await _settingsStore.load();
     _playbook = await _knowledgeStore.load();
     _backupPrefs = await _backupPrefsStore.load();
@@ -679,7 +681,17 @@ class AppController extends ChangeNotifier {
 
   /// Notification taps: action buttons carry `action:<id>|<uri>` (the uri is
   /// the insight's deep link); everything else just brings the app forward.
+  /// Where a notification tap should land inside the app (tab index). The
+  /// shell listens and consumes; null = no pending request. This is what
+  /// makes the daily-brief notification open Today instead of merely
+  /// foregrounding the app.
+  final ValueNotifier<int?> tabRequest = ValueNotifier<int?>(null);
+
   void _onNotificationTap(String payload) {
+    if (payload == 'brief') {
+      tabRequest.value = 0; // Today — the brief's home
+      return;
+    }
     if (!payload.startsWith('action:')) return;
     final separator = payload.indexOf('|');
     if (separator < 0) return;

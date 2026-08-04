@@ -42,6 +42,8 @@ import 'dart:convert';
 import 'package:dio/dio.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 
+import '../../core/ai_key.dart';
+
 import '../../domain/knowledge.dart';
 import '../../domain/models.dart';
 
@@ -127,7 +129,7 @@ class KnowledgeLearner {
   static const allowedSchemes = {'https', 'upi'};
 
   String? get _apiKey {
-    final key = dotenv.maybeGet('OPENROUTER_API_KEY')?.trim();
+    final key = AiKey.value;
     return (key == null || key.isEmpty) ? null : key;
   }
 
@@ -169,7 +171,7 @@ class KnowledgeLearner {
       // Only spend the key check once we know there is something to buy.
       final key = _apiKey;
       if (key == null) {
-        return const LearnedTypes(error: 'OPENROUTER_API_KEY is not set');
+        return const LearnedTypes(error: 'No OpenRouter key — add one in Settings → AI');
       }
 
       final content = await _post(key, _prompt(clusters));

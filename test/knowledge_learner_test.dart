@@ -214,7 +214,7 @@ void main() {
 
       expect(fixture.adapter.calls, isEmpty);
       expect(result.types, isEmpty);
-      expect(result.error, contains('OPENROUTER_API_KEY'));
+      expect(result.error, contains('OpenRouter key'));
     });
   });
 

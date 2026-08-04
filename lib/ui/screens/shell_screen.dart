@@ -1,5 +1,7 @@
 import 'package:flutter/cupertino.dart';
+import 'package:provider/provider.dart';
 
+import '../../state/app_controller.dart';
 import '../glass/glass.dart';
 import 'money_screen.dart';
 import 'settings_screen.dart';
@@ -16,6 +18,34 @@ class ShellScreen extends StatefulWidget {
 
 class _ShellScreenState extends State<ShellScreen> {
   int _index = 0;
+  AppController? _app;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // Notification taps land on a destination, not just the foreground:
+    // the controller posts a tab request, the shell consumes it.
+    final app = context.read<AppController>();
+    if (!identical(app, _app)) {
+      _app?.tabRequest.removeListener(_onTabRequest);
+      _app = app;
+      app.tabRequest.addListener(_onTabRequest);
+      _onTabRequest(); // consume one that fired before the shell mounted
+    }
+  }
+
+  void _onTabRequest() {
+    final tab = _app?.tabRequest.value;
+    if (tab == null) return;
+    _app?.tabRequest.value = null;
+    if (mounted && tab >= 0 && tab <= 3) setState(() => _index = tab);
+  }
+
+  @override
+  void dispose() {
+    _app?.tabRequest.removeListener(_onTabRequest);
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {

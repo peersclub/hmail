@@ -228,7 +228,7 @@ void main() {
 
       final result = await service.testConnection();
       expect(result.ok, isFalse);
-      expect(result.error, 'Key rejected — check OPENROUTER_API_KEY');
+      expect(result.error, 'Key rejected — check your OpenRouter key');
     });
 
     test('maps 429 to a rate-limit message', () async {
@@ -272,7 +272,7 @@ void main() {
 
       final result = await service.testConnection();
       expect(result.ok, isFalse);
-      expect(result.error, contains('OPENROUTER_API_KEY'));
+      expect(result.error, contains('OpenRouter key'));
       expect(called, isFalse);
     });
   });
