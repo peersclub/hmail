@@ -1,5 +1,11 @@
 # Development Log
 
+## 2026-08-04 — Phase B started, session closed mid-flight
+
+Landed: `PriceChange` model + full snapshot plumbing (`16f676c`) — additive, tests green.
+**Not landed (next session):** price-change detector (compare previous vs fresh subscriptions in sync_engine before merge), insight_store merge + key v8→v9, mapper block (money, weight 85), savings counter on Money hero, Gmail pagination/backoff hardening, proactive upcoming-alerts scheduler (renewal T-2d / bill T-1d / return T-1d). Plan details in [[Roadmap]] Phase B.
+
+
 ## 2026-08-04 — ui-ux-pro-max audit: all 4 waves shipped
 
 Full audit + execution log in [[UX Backlog — ui-ux-pro-max audit]]. 14 items, 4 commits:
