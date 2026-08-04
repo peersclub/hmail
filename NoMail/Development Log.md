@@ -1,5 +1,18 @@
 # Development Log
 
+## 2026-08-04 — ui-ux-pro-max audit: all 4 waves shipped
+
+Full audit + execution log in [[UX Backlog — ui-ux-pro-max audit]]. 14 items, 4 commits:
+
+- **Wave 1 (`aec9fd2`)** — `PressableRow` in glass.dart: press feedback (<100ms opacity dim, no layout shift) + VoiceOver button semantics for every tappable row app-wide. 44pt touch targets (SyncBusyBadge, WebView open-outside/pill/dismiss). Labels on icon-only buttons.
+- **Wave 2 (`c39d7c4`)** — Reduced Motion gating (Money count-up 700→450ms, zero under system setting; WebView hairline). `SkeletonRows` during first scan on Today + Money. Haptics on backup success / restore / account connect.
+- **Wave 3 (`5456b03`)** — Timeline grouped feed = lazy `SliverList` of keyed domain sections (blur budget flat; rows keyed by `insight.id`). GlassRow +1 text line at accessibility sizes. `tertiaryLabel`→`secondaryLabel` for informational text (AA contrast). `GlassEmptyState` action slot.
+- **Wave 4 (`bf79b1c`)** — `AiKey`: in-app OpenRouter key entry (Settings → AI, Add/Replace/Remove; user key beats .env; SharedPreferences with documented trade-off). Daily-brief notification deep-links to Today (`tabRequest` + shell listener).
+
+Deferred: #13 icon sweep (remaining fill/outline mixes are semantic). Needs device: VoiceOver pass, largest-AX-size pass, contrast on real blur.
+
+371 tests pass; installed to iPhone.
+
 ## 2026-08-02 — Multi-account managed properly (commit `b6e9438`)
 
 Victor: "I still feel like multiple Gmail account addition is not managed better." An audit agreed — and found a bug on the way.
