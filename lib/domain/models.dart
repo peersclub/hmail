@@ -645,6 +645,69 @@ class DailyBrief {
 }
 
 /// The full extracted state of the account — what the app persists and renders.
+/// A subscription's price moved between syncs. The raise nobody announces
+/// loudly — buried in a renewal receipt — is exactly the thing a paying user
+/// wants surfaced. Detected by comparing the previous snapshot's amount to
+/// the fresh scan's; persisted so the alert survives until it goes stale.
+class PriceChange {
+  final String service;
+  final double oldAmount;
+  final double newAmount;
+  final String currency;
+  final Cadence cadence;
+  final DateTime detectedAt;
+  final String sourceEmailId;
+
+  const PriceChange({
+    required this.service,
+    required this.oldAmount,
+    required this.newAmount,
+    required this.currency,
+    required this.cadence,
+    required this.detectedAt,
+    required this.sourceEmailId,
+  });
+
+  bool get isIncrease => newAmount > oldAmount;
+
+  /// Monthly delta, signed — yearly plans normalized so the "₹/mo" framing
+  /// stays honest.
+  double get monthlyDelta => cadence == Cadence.yearly
+      ? (newAmount - oldAmount) / 12.0
+      : (newAmount - oldAmount);
+
+  /// A change stays interesting for a quarter — long enough to act on the
+  /// renewal it affects, short enough not to haunt the feed forever.
+  bool get isStale =>
+      detectedAt.isBefore(DateTime.now().subtract(const Duration(days: 90)));
+
+  String get dedupeKey =>
+      '${service.toLowerCase()}|${newAmount.toStringAsFixed(2)}';
+
+  Map<String, dynamic> toJson() => {
+        'service': service,
+        'oldAmount': oldAmount,
+        'newAmount': newAmount,
+        'currency': currency,
+        'cadence': cadence.name,
+        'detectedAt': detectedAt.toIso8601String(),
+        'sourceEmailId': sourceEmailId,
+      };
+
+  factory PriceChange.fromJson(Map<String, dynamic> json) => PriceChange(
+        service: json['service'] as String,
+        oldAmount: (json['oldAmount'] as num).toDouble(),
+        newAmount: (json['newAmount'] as num).toDouble(),
+        currency: json['currency'] as String,
+        cadence: Cadence.values.firstWhere(
+          (c) => c.name == json['cadence'],
+          orElse: () => Cadence.monthly,
+        ),
+        detectedAt: DateTime.parse(json['detectedAt'] as String),
+        sourceEmailId: json['sourceEmailId'] as String,
+      );
+}
+
 class InsightSnapshot {
   final List<Subscription> subscriptions;
   final List<Bill> bills;
@@ -654,6 +717,7 @@ class InsightSnapshot {
   final List<TravelItem> travel;
   final List<PaymentAlert> payments;
   final List<ReturnItem> returns;
+  final List<PriceChange> priceChanges;
   final List<AttentionItem> attention;
   final DailyBrief? brief;
   final DateTime? lastSyncedAt;
@@ -668,6 +732,7 @@ class InsightSnapshot {
     this.travel = const [],
     this.payments = const [],
     this.returns = const [],
+    this.priceChanges = const [],
     this.attention = const [],
     this.brief,
     this.lastSyncedAt,
@@ -727,6 +792,12 @@ class InsightSnapshot {
       payments.where((p) => !p.isStale).toList()
         ..sort((a, b) => b.date.compareTo(a.date));
 
+  /// Price changes still worth showing, biggest monthly impact first.
+  List<PriceChange> get activePriceChanges =>
+      priceChanges.where((c) => !c.isStale).toList()
+        ..sort((a, b) =>
+            b.monthlyDelta.abs().compareTo(a.monthlyDelta.abs()));
+
   List<ReturnItem> get openReturns =>
       returns.where((r) => !r.isStale).toList()
         ..sort((a, b) => a.deadline.compareTo(b.deadline));
@@ -748,6 +819,7 @@ class InsightSnapshot {
     List<TravelItem>? travel,
     List<PaymentAlert>? payments,
     List<ReturnItem>? returns,
+    List<PriceChange>? priceChanges,
     List<AttentionItem>? attention,
     DailyBrief? brief,
     DateTime? lastSyncedAt,
@@ -762,6 +834,7 @@ class InsightSnapshot {
         travel: travel ?? this.travel,
         payments: payments ?? this.payments,
         returns: returns ?? this.returns,
+        priceChanges: priceChanges ?? this.priceChanges,
         attention: attention ?? this.attention,
         brief: brief ?? this.brief,
         lastSyncedAt: lastSyncedAt ?? this.lastSyncedAt,
@@ -777,6 +850,7 @@ class InsightSnapshot {
         'travel': travel.map((t) => t.toJson()).toList(),
         'payments': payments.map((p) => p.toJson()).toList(),
         'returns': returns.map((r) => r.toJson()).toList(),
+        'priceChanges': priceChanges.map((c) => c.toJson()).toList(),
         'attention': attention.map((a) => a.toJson()).toList(),
         'brief': brief?.toJson(),
         'lastSyncedAt': lastSyncedAt?.toIso8601String(),
@@ -808,6 +882,9 @@ class InsightSnapshot {
             .toList(),
         returns: ((json['returns'] ?? []) as List)
             .map((e) => ReturnItem.fromJson(e as Map<String, dynamic>))
+            .toList(),
+        priceChanges: ((json['priceChanges'] ?? []) as List)
+            .map((e) => PriceChange.fromJson(e as Map<String, dynamic>))
             .toList(),
         attention: ((json['attention'] ?? []) as List)
             .map((e) => AttentionItem.fromJson(e as Map<String, dynamic>))
