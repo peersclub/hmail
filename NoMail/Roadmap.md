@@ -64,6 +64,47 @@ marker on every action row. See [[Architecture]].
 - [ ] On-device VoiceOver audit of Timeline chip drag-reorder
 - [ ] Pin the Timeline chip row (needs a sliver refactor)
 
+## Pay-worthy arc (added 2026-08-04)
+
+Willingness to pay = recurring pain solved + money visibly saved + trust.
+Closest paid analog: Rocket Money ($4–12/mo, subscription tracking via bank
+linking). NoMail is that from email alone — no bank credentials, all
+on-device, zero server cost per user (~100% margin, real privacy story).
+
+**Phase A — Truth (1–2 weeks, blocks everything).** First real-inbox sync +
+2–3 extractor tuning rounds from real misses. Fixtures prove nothing to a
+paying user. Real-inbox hardening: pagination past 25/query, quota backoff.
+
+**Phase B — the pay trigger: Money intelligence.**
+- [ ] Price-hike detection — renewal amount changed vs snapshot history
+      ("Netflix went ₹649 → ₹699"). Killer feature; data already stored.
+- [ ] Unused-subscription heuristic — paying but no usage signals in mail
+- [ ] "Found savings" counter — running total NoMail surfaced; the number
+      that justifies the subscription price on sight
+- [ ] Annual spend report (shareable)
+- [ ] Proactive notifications: renewal T-2d, bill due T-1d, return window
+      closing T-1d — value delivered without opening the app (local
+      notifications; works on free team today)
+
+**Phase C — Packaging.**
+- [ ] Free/Pro split: free = 1 account + basic insights; Pro = multi-account,
+      AI brief + audit, cloud backup, price-hike alerts, full history
+- [ ] StoreKit 2 IAP (needs paid Apple team). Anchor ₹499–999/yr India,
+      $19.99–29.99/yr US
+- [ ] First-60-seconds onboarding: money-shot card already exists — make the
+      first scan's "found ₹X hiding in your inbox" the conversion moment
+
+**Phase D — Distribution.**
+- [ ] TestFlight beta once paid team active. OAuth test-user cap (100) also
+      delays the CASA gate — beta under it
+- [ ] CASA Tier 2 + key-proxy server (both already ship-blocking above)
+      before public App Store release
+- [ ] Privacy nutrition labels, policy page
+
+Defensible core: per-user learned playbook (recipes backup preserves — the
+switching cost), and no-server architecture (price floor competitors with
+infra can't match).
+
 **Known limits**
 - Personal Apple team: builds expire ~7 days and iCloud backup needs a paid
   membership (see `a3a6cdf`)
