@@ -151,16 +151,7 @@ class _TimelineScreenState extends State<TimelineScreen> {
                         ? 'Scanning your inbox…'
                         : 'Insights from every corner of your inbox collect here.',
                   )
-                else if (activeFilter == null)
-                  for (final domain in domains)
-                    _DomainSection(
-                      label: domain.label,
-                      insights: [
-                        for (final i in shown)
-                          if (i.domain == domain) i,
-                      ],
-                    )
-                else if (shown.isEmpty)
+                else if (activeFilter != null && shown.isEmpty)
                   // A selected chip whose domain has emptied out: name what
                   // belongs here instead of rendering a blank list.
                   Padding(
@@ -175,15 +166,34 @@ class _TimelineScreenState extends State<TimelineScreen> {
                       ),
                     ),
                   )
-                else
+                else if (activeFilter != null)
                   Padding(
                     padding: const EdgeInsets.only(top: 20),
                     child: _DomainSection(insights: shown),
                   ),
-                const SizedBox(height: kDockClearance),
               ],
             ),
           ),
+          // The grouped feed is a lazy sliver: a section only builds when it
+          // scrolls near the viewport, so a 500-insight inbox doesn't pay for
+          // every domain's rows (and every section's BackdropFilter) up
+          // front. Keys keep section state stable as domains come and go.
+          if (all.isNotEmpty && activeFilter == null)
+            SliverList.builder(
+              itemCount: domains.length,
+              itemBuilder: (context, index) {
+                final domain = domains[index];
+                return _DomainSection(
+                  key: ValueKey(domain),
+                  label: domain.label,
+                  insights: [
+                    for (final i in shown)
+                      if (i.domain == domain) i,
+                  ],
+                );
+              },
+            ),
+          const SliverToBoxAdapter(child: SizedBox(height: kDockClearance)),
         ],
       ),
     );
@@ -217,14 +227,16 @@ class _DomainSection extends StatelessWidget {
   final String? label;
   final List<Insight> insights;
 
-  const _DomainSection({this.label, required this.insights});
+  const _DomainSection({super.key, this.label, required this.insights});
 
   @override
   Widget build(BuildContext context) {
     if (insights.isEmpty) return const SizedBox.shrink();
     return GlassSection(
       label: label,
-      children: [for (final i in insights) InsightCard(insight: i)],
+      children: [
+        for (final i in insights) InsightCard(key: ValueKey(i.id), insight: i),
+      ],
     );
   }
 }

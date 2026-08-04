@@ -84,14 +84,16 @@ class TodayScreen extends StatelessWidget {
                 GlassSection(
                   label: 'Needs attention',
                   children: [
-                    for (final i in attention) InsightCard(insight: i),
+                    for (final i in attention)
+                      InsightCard(key: ValueKey(i.id), insight: i),
                   ],
                 ),
               if (comingUp.isNotEmpty)
                 GlassSection(
                   label: 'Coming up',
                   children: [
-                    for (final i in comingUp) InsightCard(insight: i),
+                    for (final i in comingUp)
+                      InsightCard(key: ValueKey(i.id), insight: i),
                   ],
                 ),
               if (snapshot.isEmpty && app.phase == AppPhase.syncing)
@@ -178,7 +180,7 @@ class TodayScreen extends StatelessWidget {
                   'Tap to watch the pipeline',
                   style: TextStyle(
                     fontSize: 13,
-                    color: Palette.tertiaryLabel(context),
+                    color: Palette.secondaryLabel(context),
                   ),
                 ),
               ],
@@ -262,7 +264,7 @@ class TodayScreen extends StatelessWidget {
               Icon(
                 CupertinoIcons.chevron_right,
                 size: 15,
-                color: Palette.tertiaryLabel(context),
+                color: Palette.secondaryLabel(context),
               ),
             ],
           ),
@@ -337,7 +339,7 @@ class TodayScreen extends StatelessWidget {
               child: Icon(
                 CupertinoIcons.xmark_circle_fill,
                 size: 22,
-                color: Palette.tertiaryLabel(context),
+                color: Palette.secondaryLabel(context),
               ),
             ),
           ],
@@ -378,7 +380,7 @@ class TodayScreen extends StatelessWidget {
                       height: 4,
                       decoration: BoxDecoration(
                         shape: BoxShape.circle,
-                        color: Palette.tertiaryLabel(context),
+                        color: Palette.secondaryLabel(context),
                       ),
                     ),
                   ),
@@ -400,13 +402,13 @@ class TodayScreen extends StatelessWidget {
             Row(
               children: [
                 Icon(CupertinoIcons.sparkles,
-                    size: 13, color: Palette.tertiaryLabel(context)),
+                    size: 13, color: Palette.secondaryLabel(context)),
                 const SizedBox(width: 5),
                 Text(
                   ai ? 'AI Brief' : 'Daily brief',
                   style: TextStyle(
                     fontSize: 13,
-                    color: Palette.tertiaryLabel(context),
+                    color: Palette.secondaryLabel(context),
                   ),
                 ),
               ],

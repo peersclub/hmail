@@ -146,7 +146,7 @@ class SignInScreen extends StatelessWidget {
                       textAlign: TextAlign.center,
                       style: TextStyle(
                         fontSize: 12,
-                        color: Palette.tertiaryLabel(context),
+                        color: Palette.secondaryLabel(context),
                       ),
                     ),
                   ],

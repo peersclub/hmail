@@ -79,7 +79,7 @@ class KnowledgeScreen extends StatelessWidget {
                           style: TextStyle(
                             fontSize: 13,
                             height: 1.35,
-                            color: Palette.tertiaryLabel(context),
+                            color: Palette.secondaryLabel(context),
                           ),
                         ),
                       ],

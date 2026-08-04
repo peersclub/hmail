@@ -257,6 +257,11 @@ class GlassRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Dynamic Type: at accessibility text sizes a one-line budget guarantees
+    // truncation, so every row earns an extra line once the scaled 17pt body
+    // crosses ~22pt (≈ xxxLarge). Rows grow; text never silently disappears.
+    final axBoost = MediaQuery.textScalerOf(context).scale(17) >= 22 ? 1 : 0;
+
     final row = Padding(
       padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
       child: Row(
@@ -269,7 +274,7 @@ class GlassRow extends StatelessWidget {
               children: [
                 Text(
                   title,
-                  maxLines: titleMaxLines,
+                  maxLines: titleMaxLines + axBoost,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
                     fontSize: 17,
@@ -281,7 +286,7 @@ class GlassRow extends StatelessWidget {
                   const SizedBox(height: 2),
                   Text(
                     subtitle!,
-                    maxLines: subtitleMaxLines,
+                    maxLines: subtitleMaxLines + axBoost,
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
                       fontSize: 15,
@@ -539,11 +544,18 @@ class GlassEmptyState extends StatelessWidget {
   final String title;
   final String caption;
 
+  /// The way forward, rendered as a quiet button under the caption. An empty
+  /// state that explains itself but offers no action is a dead end.
+  final String? actionLabel;
+  final VoidCallback? onAction;
+
   const GlassEmptyState({
     super.key,
     required this.icon,
     required this.title,
     required this.caption,
+    this.actionLabel,
+    this.onAction,
   });
 
   @override
@@ -573,6 +585,10 @@ class GlassEmptyState extends StatelessWidget {
               color: Palette.secondaryLabel(context),
             ),
           ),
+          if (actionLabel != null && onAction != null) ...[
+            const SizedBox(height: 20),
+            QuietButton(actionLabel!, onPressed: onAction),
+          ],
         ],
       ),
     );
