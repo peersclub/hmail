@@ -37,10 +37,12 @@ Source: `ui-ux-pro-max` App-UI rule database (Apple HIG / Material / WCAG) check
 ## Already compliant (verified ✓)
 Tabular figures on amounts; 4pt spacing rhythm; one primary CTA per screen; bottom-nav ≤5 with labels (native CNTabBar); confirmation before destructive actions; errors near controls with recovery (this session's journey work); in-flow feedback (no overlay toasts); state preservation across tabs (IndexedStack); safe-area handling via `MediaQuery.paddingOf` + `kDockClearance`.
 
-## Suggested execution waves
-- **Wave 1 (one sitting, huge leverage):** #1 #2 #5 #6 — GlassRow semantics + press feedback + target sizes + labels. Mostly `glass.dart`.
-- **Wave 2:** #7 haptics, #10 reduced motion, #8 skeletons.
-- **Wave 3:** #9 virtualization+keys, #3 Dynamic-Type layout audit, #4 contrast pass, #11.
-- **Wave 4 (product calls first):** #12 AI key, #14 deep links.
+## Execution status (2026-08-04) — ALL WAVES SHIPPED
+- **Wave 1 ✓** (`aec9fd2`): `PressableRow` in glass.dart — press feedback + button semantics for every row; 44pt targets (SyncBusyBadge, WebView buttons); icon labels.
+- **Wave 2 ✓** (`c39d7c4`): Reduced Motion gating (Money count-up 700→450ms/zero, WebView hairline); `SkeletonRows` on Today+Money first scan; haptics on backup/restore/account-connect.
+- **Wave 3 ✓** (`5456b03`): Timeline grouped feed = lazy SliverList of keyed sections; `ValueKey(insight.id)` on all InsightCards; GlassRow +1 line at accessibility text sizes; tertiaryLabel→secondaryLabel for informational text (AA contrast); GlassEmptyState action slot.
+- **Wave 4 ✓** (`bf79b1c`): `AiKey` — in-app OpenRouter key Add/Replace/Remove (user key beats .env; SharedPreferences, documented trade-off); brief notification deep-links to Today via `tabRequest`.
+- **#13 icon sweep — assessed, deferred:** remaining filled/outline mixes are semantic emphasis (e.g. `cloud_fill` = backed up); full normalization is cosmetic risk with no journey gain.
+- **Still open (needs device/human):** Dynamic-Type visual pass at largest AX size on hardware; VoiceOver walkthrough; contrast spot-check on real glass blur.
 
 Related: [[Development Log]], [[Roadmap]]
