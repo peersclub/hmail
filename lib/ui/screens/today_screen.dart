@@ -142,8 +142,7 @@ class TodayScreen extends StatelessWidget {
         : (app.stage == SyncStage.idle
             ? 'Connecting to Google…'
             : app.activityLine);
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
+    return PressableRow(
       onTap: () => Navigator.of(context, rootNavigator: true).push(
         CupertinoPageRoute<void>(builder: (_) => const ProcessingScreen()),
       ),
@@ -232,8 +231,7 @@ class TodayScreen extends StatelessWidget {
   Widget _activityLine(BuildContext context, AppController app) {
     return Padding(
       padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
-      child: GestureDetector(
-        behavior: HitTestBehavior.opaque,
+      child: PressableRow(
         onTap: () => Navigator.of(context, rootNavigator: true).push(
           CupertinoPageRoute<void>(builder: (_) => const ProcessingScreen()),
         ),
@@ -416,8 +414,7 @@ class TodayScreen extends StatelessWidget {
       BuildContext context, InsightSnapshot snapshot, int dueCount) {
     Widget stat(String value, String caption, int tab) {
       return Expanded(
-        child: GestureDetector(
-          behavior: HitTestBehavior.opaque,
+        child: PressableRow(
           onTap: () => onNavigate?.call(tab),
           child: Padding(
             padding: const EdgeInsets.symmetric(vertical: 16),

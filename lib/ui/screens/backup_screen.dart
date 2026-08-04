@@ -416,31 +416,29 @@ class _BackupScreenState extends State<BackupScreen> {
   }) {
     final tint =
         enabled ? Palette.accent(context) : Palette.secondaryLabel(context);
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTap: enabled && !busy ? onTap : null,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
-        child: Row(
-          children: [
-            if (busy)
-              const CupertinoActivityIndicator(radius: 9)
-            else
-              Icon(icon, size: 20, color: tint),
-            const SizedBox(width: 14),
-            Text(
-              label,
-              style: TextStyle(
-                fontSize: 17,
-                fontWeight: FontWeight.w600,
-                letterSpacing: -0.4,
-                color: tint,
-              ),
+    final content = Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+      child: Row(
+        children: [
+          if (busy)
+            const CupertinoActivityIndicator(radius: 9)
+          else
+            Icon(icon, size: 20, color: tint),
+          const SizedBox(width: 14),
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 17,
+              fontWeight: FontWeight.w600,
+              letterSpacing: -0.4,
+              color: tint,
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
+    if (!enabled || busy) return content;
+    return PressableRow(onTap: onTap, child: content);
   }
 
   Future<void> _pickFrequency(BuildContext context, AppController app) async {

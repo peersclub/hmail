@@ -49,15 +49,20 @@ class SyncBusyBadge extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTap: () => Navigator.of(context, rootNavigator: true).push(
-        CupertinoPageRoute<void>(builder: (_) => const ProcessingScreen()),
-      ),
-      child: const SizedBox(
-        width: 36,
-        height: 36,
-        child: Center(child: CupertinoActivityIndicator()),
+    return Semantics(
+      button: true,
+      label: 'Scanning your inbox. Opens the live pipeline',
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: () => Navigator.of(context, rootNavigator: true).push(
+          CupertinoPageRoute<void>(builder: (_) => const ProcessingScreen()),
+        ),
+        // 44pt hit target (HIG minimum); the indicator stays visually small.
+        child: const SizedBox(
+          width: 44,
+          height: 44,
+          child: Center(child: CupertinoActivityIndicator()),
+        ),
       ),
     );
   }

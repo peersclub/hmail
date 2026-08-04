@@ -347,10 +347,56 @@ class GlassRow extends StatelessWidget {
       ),
     );
     if (onTap == null) return row;
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTap: onTap,
-      child: row,
+    return PressableRow(onTap: onTap!, child: row);
+  }
+}
+
+/// The tappable wrapper every glass row goes through — and therefore the one
+/// place the whole app gets its interaction contract:
+///
+///  * **Press feedback** (HIG: respond within 100ms): the row dims on touch-
+///    down — instantly on press, easing back on release. Opacity only, so
+///    nothing shifts or reflows under the finger.
+///  * **Screen-reader semantics**: rows announce as buttons and read their
+///    texts as one element, instead of a bag of unrelated labels that don't
+///    sound tappable.
+class PressableRow extends StatefulWidget {
+  final Widget child;
+  final VoidCallback onTap;
+
+  const PressableRow({super.key, required this.onTap, required this.child});
+
+  @override
+  State<PressableRow> createState() => _PressableRowState();
+}
+
+class _PressableRowState extends State<PressableRow> {
+  bool _pressed = false;
+
+  void _set(bool pressed) {
+    if (_pressed != pressed) setState(() => _pressed = pressed);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return MergeSemantics(
+      child: Semantics(
+        button: true,
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTapDown: (_) => _set(true),
+          onTapUp: (_) => _set(false),
+          onTapCancel: () => _set(false),
+          onTap: widget.onTap,
+          child: AnimatedOpacity(
+            // Down fast (the acknowledgement), up gently (the release).
+            opacity: _pressed ? 0.5 : 1,
+            duration: Duration(milliseconds: _pressed ? 40 : 180),
+            curve: Curves.easeOut,
+            child: widget.child,
+          ),
+        ),
+      ),
     );
   }
 }

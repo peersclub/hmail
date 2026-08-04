@@ -144,8 +144,7 @@ class SettingsScreen extends StatelessWidget {
         ),
         GlassSection(
           children: [
-            GestureDetector(
-              behavior: HitTestBehavior.opaque,
+            PressableRow(
               onTap: () => _confirmSignOut(context, app),
               child: Padding(
                 padding: const EdgeInsets.symmetric(vertical: 16),
@@ -478,11 +477,7 @@ class SettingsScreen extends StatelessWidget {
       ),
     );
     if (onTap == null) return row;
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTap: onTap,
-      child: row,
-    );
+    return PressableRow(onTap: onTap, child: row);
   }
 
   /// A quiet in-flow confirmation under the account rows (accent ✓).

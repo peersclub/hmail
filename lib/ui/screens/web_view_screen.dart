@@ -295,12 +295,15 @@ class _WebViewScreenState extends State<WebViewScreen> {
               // choice is remembered per host so the miss never repeats.
               CupertinoButton(
                 padding: EdgeInsets.zero,
-                minimumSize: const Size(34, 34),
+                minimumSize: const Size(44, 44),
                 onPressed: _openOutside,
-                child: Icon(
-                  CupertinoIcons.arrow_up_right_square,
-                  size: 21,
-                  color: Palette.label(context),
+                child: Semantics(
+                  label: 'Open outside NoMail, in the site\'s app or Safari',
+                  child: Icon(
+                    CupertinoIcons.arrow_up_right_square,
+                    size: 21,
+                    color: Palette.label(context),
+                  ),
                 ),
               ),
               CupertinoButton(
@@ -533,7 +536,8 @@ class _WebViewScreenState extends State<WebViewScreen> {
   }) {
     return CupertinoButton(
       padding: EdgeInsets.zero,
-      minimumSize: Size.zero,
+      // Pill stays visually small; the hit target meets the 44pt minimum.
+      minimumSize: const Size(44, 44),
       onPressed: onPressed,
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 7),
@@ -604,12 +608,15 @@ class _WebViewScreenState extends State<WebViewScreen> {
           const SizedBox(width: 6),
           CupertinoButton(
             padding: EdgeInsets.zero,
-            minimumSize: Size.zero,
+            minimumSize: const Size(44, 44),
             onPressed: () => setState(() => _blockedScheme = null),
-            child: Icon(
-              CupertinoIcons.xmark,
-              size: 16,
-              color: Palette.secondaryLabel(context),
+            child: Semantics(
+              label: 'Dismiss',
+              child: Icon(
+                CupertinoIcons.xmark,
+                size: 16,
+                color: Palette.secondaryLabel(context),
+              ),
             ),
           ),
         ],
