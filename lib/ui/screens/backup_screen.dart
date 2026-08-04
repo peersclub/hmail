@@ -13,6 +13,7 @@
 library;
 
 import 'package:flutter/cupertino.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
 import '../../core/palette.dart';
@@ -162,7 +163,12 @@ class _BackupScreenState extends State<BackupScreen> {
               label: busy ? 'Backing up…' : 'Back Up Now',
               busy: busy,
               enabled: !app.backupBusy,
-              onTap: () => context.read<AppController>().backUpNow(),
+              onTap: () async {
+                // Success gets a tactile confirmation (HIG: haptics for
+                // completed important actions, sparingly).
+                final ok = await context.read<AppController>().backUpNow();
+                if (ok) HapticFeedback.mediumImpact();
+              },
             ),
             ..._resultLines(
               context,
@@ -341,7 +347,8 @@ class _BackupScreenState extends State<BackupScreen> {
       return;
     }
     // Step 3: apply — result renders inline under this row.
-    await app.confirmRestore();
+    final outcome = await app.confirmRestore();
+    if (outcome != null) HapticFeedback.mediumImpact();
   }
 
   // ── Shared pieces ────────────────────────────────────────────────────────

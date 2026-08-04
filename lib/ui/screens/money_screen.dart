@@ -61,12 +61,13 @@ class MoneyScreen extends StatelessWidget {
           ),
           // Journey states: narrate a running scan; offer the scan when one
           // has never run; stay quiet when a scan simply found no money.
-          if (app.phase == AppPhase.syncing)
+          if (app.phase == AppPhase.syncing) ...[
             Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 44),
+              padding: const EdgeInsets.fromLTRB(44, 0, 44, 20),
               child: BusyLine(app.activityLine),
-            )
-          else if (snapshot.lastSyncedAt == null && !app.isDemo)
+            ),
+            const SkeletonRows(),
+          ] else if (snapshot.lastSyncedAt == null && !app.isDemo)
             const ScanActionButton(),
         ] else ...[
           Padding(
@@ -184,7 +185,11 @@ class _Hero extends StatelessWidget {
           const SizedBox(height: 6),
           TweenAnimationBuilder<double>(
             tween: Tween(begin: 0, end: monthlyTotal),
-            duration: const Duration(milliseconds: 700),
+            // ≤500ms per HIG guidance; zero when the user asked the system
+            // for reduced motion — they get the final number immediately.
+            duration: MediaQuery.disableAnimationsOf(context)
+                ? Duration.zero
+                : const Duration(milliseconds: 450),
             curve: Curves.easeOutCubic,
             builder: (context, value, _) => Text(
               formatMoney(value, currency),

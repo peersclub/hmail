@@ -68,6 +68,103 @@ class SyncBusyBadge extends StatelessWidget {
   }
 }
 
+/// Placeholder rows while the first scan runs — the shape of what's coming,
+/// not a spinner. A minutes-long scan behind a lone spinner reads as "hung";
+/// skeleton rows read as "filling up" (HIG progressive loading).
+///
+/// Pulses gently; goes static when the user asked the system for reduced
+/// motion. Hidden from screen readers — the live progress text nearby is the
+/// accessible signal.
+class SkeletonRows extends StatefulWidget {
+  final int count;
+
+  const SkeletonRows({super.key, this.count = 3});
+
+  @override
+  State<SkeletonRows> createState() => _SkeletonRowsState();
+}
+
+class _SkeletonRowsState extends State<SkeletonRows>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _pulse = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 900),
+    lowerBound: 0.45,
+    upperBound: 0.9,
+  );
+
+  @override
+  void dispose() {
+    _pulse.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final reduced = MediaQuery.disableAnimationsOf(context);
+    if (reduced) {
+      _pulse.stop();
+      _pulse.value = 0.7;
+    } else if (!_pulse.isAnimating) {
+      _pulse.repeat(reverse: true);
+    }
+
+    Widget bar(double width, double height) => Container(
+          width: width,
+          height: height,
+          decoration: BoxDecoration(
+            color: Palette.badgeFill(context),
+            borderRadius: BorderRadius.circular(height / 2),
+          ),
+        );
+
+    return ExcludeSemantics(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 20),
+        child: FadeTransition(
+          opacity: _pulse,
+          child: GlassCard(
+            padding: const EdgeInsets.symmetric(vertical: 4),
+            child: Column(
+              children: [
+                for (var i = 0; i < widget.count; i++)
+                  Padding(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
+                    child: Row(
+                      children: [
+                        Container(
+                          width: 38,
+                          height: 38,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: Palette.badgeFill(context),
+                          ),
+                        ),
+                        const SizedBox(width: 14),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              // Vary widths so it reads as content, not bars.
+                              bar(120.0 + (i * 37) % 80, 12),
+                              const SizedBox(height: 7),
+                              bar(80.0 + (i * 53) % 110, 9),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 /// The action that fills an empty screen: run the Gmail scan. A quiet glass
 /// button so empty states can offer recovery without shouting. Disables
 /// itself (and says so) while a sync is already running.

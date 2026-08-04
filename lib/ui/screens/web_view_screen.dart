@@ -391,7 +391,9 @@ class _WebViewScreenState extends State<WebViewScreen> {
               builder: (context, constraints) => Align(
                 alignment: Alignment.centerLeft,
                 child: AnimatedContainer(
-                  duration: const Duration(milliseconds: 180),
+                  duration: MediaQuery.disableAnimationsOf(context)
+                      ? Duration.zero
+                      : const Duration(milliseconds: 180),
                   curve: Curves.easeOut,
                   width: constraints.maxWidth * (_progress.clamp(0, 100) / 100),
                   height: 2,

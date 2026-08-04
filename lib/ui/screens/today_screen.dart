@@ -142,46 +142,53 @@ class TodayScreen extends StatelessWidget {
         : (app.stage == SyncStage.idle
             ? 'Connecting to Google…'
             : app.activityLine);
-    return PressableRow(
-      onTap: () => Navigator.of(context, rootNavigator: true).push(
-        CupertinoPageRoute<void>(builder: (_) => const ProcessingScreen()),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 60, horizontal: 44),
-        child: Column(
-          children: [
-            const CupertinoActivityIndicator(radius: 13),
-            const SizedBox(height: 18),
-            Text(
-              'Scanning your Gmail',
-              style: TextStyle(
-                fontSize: 19,
-                fontWeight: FontWeight.w700,
-                letterSpacing: -0.3,
-                color: Palette.label(context),
-              ),
+    return Column(
+      children: [
+        PressableRow(
+          onTap: () => Navigator.of(context, rootNavigator: true).push(
+            CupertinoPageRoute<void>(builder: (_) => const ProcessingScreen()),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 44, horizontal: 44),
+            child: Column(
+              children: [
+                const CupertinoActivityIndicator(radius: 13),
+                const SizedBox(height: 18),
+                Text(
+                  'Scanning your Gmail',
+                  style: TextStyle(
+                    fontSize: 19,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: -0.3,
+                    color: Palette.label(context),
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  detail,
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: 15,
+                    height: 1.4,
+                    color: Palette.secondaryLabel(context),
+                  ),
+                ),
+                const SizedBox(height: 10),
+                Text(
+                  'Tap to watch the pipeline',
+                  style: TextStyle(
+                    fontSize: 13,
+                    color: Palette.tertiaryLabel(context),
+                  ),
+                ),
+              ],
             ),
-            const SizedBox(height: 6),
-            Text(
-              detail,
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                fontSize: 15,
-                height: 1.4,
-                color: Palette.secondaryLabel(context),
-              ),
-            ),
-            const SizedBox(height: 10),
-            Text(
-              'Tap to watch the pipeline',
-              style: TextStyle(
-                fontSize: 13,
-                color: Palette.tertiaryLabel(context),
-              ),
-            ),
-          ],
+          ),
         ),
-      ),
+        // The shape of what's coming — reads as "filling up", not "hung".
+        const SkeletonRows(),
+        const SizedBox(height: 24),
+      ],
     );
   }
 

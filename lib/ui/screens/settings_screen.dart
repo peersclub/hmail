@@ -385,7 +385,15 @@ class SettingsScreen extends StatelessWidget {
         icon: CupertinoIcons.person_badge_plus,
         title: 'Add account',
         subtitle: 'Connect another Gmail inbox',
-        onTap: () => context.read<AppController>().addAccount(),
+        onTap: () async {
+          final app = context.read<AppController>();
+          await app.addAccount();
+          // Only a *new* connection earns the tap on the wrist.
+          if (app.accountsError == null &&
+              (app.accountsNotice?.startsWith('Connected') ?? false)) {
+            HapticFeedback.lightImpact();
+          }
+        },
       ));
     }
 
