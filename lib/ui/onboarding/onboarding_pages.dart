@@ -10,31 +10,38 @@ import 'package:flutter/cupertino.dart';
 
 import '../../core/palette.dart';
 
+List<OnboardingPageData> onboardingPages() => [
+      OnboardingPageData(scene: (context, {required active}) =>
+          _BrandScene(active: active)),
+      OnboardingPageData(scene: (context, {required active}) =>
+          _ExtractScene(active: active)),
+      OnboardingPageData(scene: (context, {required active}) =>
+          _InviteScene(active: active)),
+    ];
+
 class OnboardingPageData {
-  final Widget Function(BuildContext context) scene;
+  final Widget Function(BuildContext context, {required bool active}) scene;
 
   const OnboardingPageData({required this.scene});
 }
 
-List<OnboardingPageData> onboardingPages() => [
-      OnboardingPageData(scene: (_) => const _BrandScene()),
-      OnboardingPageData(scene: (_) => const _ExtractScene()),
-      OnboardingPageData(scene: (_) => const _InviteScene()),
-    ];
-
 class OnboardingPageBody extends StatelessWidget {
   final OnboardingPageData data;
+  final bool active;
 
-  const OnboardingPageBody(this.data, {super.key});
+  const OnboardingPageBody(this.data, {super.key, this.active = true});
 
   @override
-  Widget build(BuildContext context) => data.scene(context);
+  Widget build(BuildContext context) =>
+      data.scene(context, active: active);
 }
 
 // ── Scene 1: brand ───────────────────────────────────────────────────────
 
 class _BrandScene extends StatefulWidget {
-  const _BrandScene();
+  final bool active;
+
+  const _BrandScene({required this.active});
 
   @override
   State<_BrandScene> createState() => _BrandSceneState();
@@ -44,18 +51,30 @@ class _BrandSceneState extends State<_BrandScene>
     with SingleTickerProviderStateMixin {
   late final AnimationController _c = AnimationController(
     vsync: this,
-    duration: const Duration(milliseconds: 900),
+    duration: const Duration(milliseconds: 720),
   );
 
   @override
   void initState() {
     super.initState();
+    _playIfActive();
+  }
+
+  @override
+  void didUpdateWidget(covariant _BrandScene old) {
+    super.didUpdateWidget(old);
+    if (widget.active && !old.active) {
+      _c.forward(from: 0);
+    }
+  }
+
+  void _playIfActive() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       if (MediaQuery.disableAnimationsOf(context)) {
         _c.value = 1;
-      } else {
-        _c.forward();
+      } else if (widget.active) {
+        _c.forward(from: 0);
       }
     });
   }
@@ -75,8 +94,11 @@ class _BrandSceneState extends State<_BrandScene>
       animation: _c,
       builder: (context, _) {
         final t = Curves.easeOutCubic.transform(_c.value);
-        final late = Curves.easeOut.transform(
-          ((_c.value - 0.35) / 0.65).clamp(0.0, 1.0),
+        final late = Curves.easeOutCubic.transform(
+          ((_c.value - 0.28) / 0.72).clamp(0.0, 1.0),
+        );
+        final foot = Curves.easeOutCubic.transform(
+          ((_c.value - 0.48) / 0.52).clamp(0.0, 1.0),
         );
         return Padding(
           padding: const EdgeInsets.fromLTRB(28, 0, 28, 0),
@@ -87,7 +109,7 @@ class _BrandSceneState extends State<_BrandScene>
               Opacity(
                 opacity: t,
                 child: Transform.translate(
-                  offset: Offset(0, 28 * (1 - t)),
+                  offset: Offset(0, 22 * (1 - t)),
                   child: Text(
                     'NoMail',
                     style: TextStyle(
@@ -104,7 +126,7 @@ class _BrandSceneState extends State<_BrandScene>
               Opacity(
                 opacity: late,
                 child: Transform.translate(
-                  offset: Offset(0, 16 * (1 - late)),
+                  offset: Offset(0, 14 * (1 - late)),
                   child: Text(
                     'Your inbox,\nminus the inbox.',
                     style: TextStyle(
@@ -119,13 +141,16 @@ class _BrandSceneState extends State<_BrandScene>
               ),
               const Spacer(flex: 4),
               Opacity(
-                opacity: late,
-                child: Text(
-                  'Email is where life leaves receipts.\nWe keep the ones that matter.',
-                  style: TextStyle(
-                    fontSize: 16,
-                    height: 1.45,
-                    color: secondary,
+                opacity: foot,
+                child: Transform.translate(
+                  offset: Offset(0, 10 * (1 - foot)),
+                  child: Text(
+                    'Email is where life leaves receipts.\nWe keep the ones that matter.',
+                    style: TextStyle(
+                      fontSize: 16,
+                      height: 1.45,
+                      color: secondary,
+                    ),
                   ),
                 ),
               ),
@@ -141,7 +166,9 @@ class _BrandSceneState extends State<_BrandScene>
 // ── Scene 2: extraction ──────────────────────────────────────────────────
 
 class _ExtractScene extends StatefulWidget {
-  const _ExtractScene();
+  final bool active;
+
+  const _ExtractScene({required this.active});
 
   @override
   State<_ExtractScene> createState() => _ExtractSceneState();
@@ -151,18 +178,30 @@ class _ExtractSceneState extends State<_ExtractScene>
     with SingleTickerProviderStateMixin {
   late final AnimationController _c = AnimationController(
     vsync: this,
-    duration: const Duration(milliseconds: 1100),
+    duration: const Duration(milliseconds: 980),
   );
 
   @override
   void initState() {
     super.initState();
+    _playIfActive();
+  }
+
+  @override
+  void didUpdateWidget(covariant _ExtractScene old) {
+    super.didUpdateWidget(old);
+    if (widget.active && !old.active) {
+      _c.forward(from: 0);
+    }
+  }
+
+  void _playIfActive() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       if (MediaQuery.disableAnimationsOf(context)) {
         _c.value = 1;
-      } else {
-        _c.forward();
+      } else if (widget.active) {
+        _c.forward(from: 0);
       }
     });
   }
@@ -179,62 +218,64 @@ class _ExtractSceneState extends State<_ExtractScene>
     final label = Palette.label(context);
 
     final chips = [
-      (0.18, -0.55, -0.15, 'BESCOM', 'Due tomorrow', '₹1,840'),
-      (0.32, 0.35, -0.42, 'Netflix', 'Renews Friday', '₹649'),
-      (0.46, -0.25, 0.38, 'Delhivery', 'Out for delivery', 'Track'),
-      (0.60, 0.55, 0.22, 'Product sync', 'Today · 8pm', 'Join'),
+      (0.12, -0.55, -0.15, 'BESCOM', 'Due tomorrow', '₹1,840'),
+      (0.24, 0.35, -0.42, 'Netflix', 'Renews Friday', '₹649'),
+      (0.36, -0.25, 0.38, 'Delhivery', 'Out for delivery', 'Track'),
+      (0.48, 0.55, 0.22, 'Product sync', 'Today · 8pm', 'Join'),
     ];
 
     return AnimatedBuilder(
       animation: _c,
       builder: (context, _) {
         final t = _c.value;
-        final mailFade = (1 - Curves.easeIn.transform((t / 0.45).clamp(0.0, 1.0)))
-            .clamp(0.0, 1.0);
-        final copyIn = Curves.easeOut.transform(
-          ((t - 0.55) / 0.45).clamp(0.0, 1.0),
+        final mailFade =
+            (1 - Curves.easeIn.transform((t / 0.4).clamp(0.0, 1.0)))
+                .clamp(0.0, 1.0);
+        final copyIn = Curves.easeOutCubic.transform(
+          ((t - 0.5) / 0.5).clamp(0.0, 1.0),
         );
 
         return Stack(
           children: [
-            // Ghost mail — the noise that dissolves.
             Positioned.fill(
               child: Opacity(
-                opacity: mailFade * 0.55,
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(32, 48, 32, 0),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      for (final line in const [
-                        'HDFC Bank — Statement ready',
-                        'Netflix — Your plan renews soon',
-                        '50% OFF this weekend only!!!!',
-                        'Delhivery — Shipped via Bluedart',
-                        'BESCOM — Bill generated for Jul',
-                        'Swiggy — ₹200 off on orders above',
-                        'LinkedIn — People are viewing',
-                      ])
-                        Padding(
-                          padding: const EdgeInsets.only(bottom: 18),
-                          child: Text(
-                            line,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              fontSize: 15,
-                              fontWeight: FontWeight.w400,
-                              letterSpacing: -0.1,
-                              color: secondary,
+                opacity: mailFade * 0.5,
+                child: Transform.translate(
+                  offset: Offset(0, -12 * (1 - mailFade)),
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(32, 48, 32, 0),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        for (final line in const [
+                          'HDFC Bank — Statement ready',
+                          'Netflix — Your plan renews soon',
+                          '50% OFF this weekend only!!!!',
+                          'Delhivery — Shipped via Bluedart',
+                          'BESCOM — Bill generated for Jul',
+                          'Swiggy — ₹200 off on orders above',
+                          'LinkedIn — People are viewing',
+                        ])
+                          Padding(
+                            padding: const EdgeInsets.only(bottom: 18),
+                            child: Text(
+                              line,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                fontSize: 15,
+                                fontWeight: FontWeight.w400,
+                                letterSpacing: -0.1,
+                                color: secondary,
+                              ),
                             ),
                           ),
-                        ),
-                    ],
+                      ],
+                    ),
                   ),
                 ),
               ),
             ),
-            // Extracted chips float into place.
             for (var i = 0; i < chips.length; i++)
               _FloatingChip(
                 progress: t,
@@ -245,7 +286,6 @@ class _ExtractSceneState extends State<_ExtractScene>
                 subtitle: chips[i].$5,
                 trailing: chips[i].$6,
               ),
-            // Copy at the bottom of the composition.
             Positioned(
               left: 28,
               right: 28,
@@ -253,7 +293,7 @@ class _ExtractSceneState extends State<_ExtractScene>
               child: Opacity(
                 opacity: copyIn,
                 child: Transform.translate(
-                  offset: Offset(0, 12 * (1 - copyIn)),
+                  offset: Offset(0, 14 * (1 - copyIn)),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
@@ -309,18 +349,18 @@ class _FloatingChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final local = ((progress - startAt) / (1 - startAt)).clamp(0.0, 1.0);
+    final local = ((progress - startAt) / 0.42).clamp(0.0, 1.0);
     final t = Curves.easeOutCubic.transform(local);
-    // Drift in from slightly below + scale up.
-    final dy = 36 * (1 - t);
-    final scale = 0.92 + 0.08 * t;
+    final dy = 28 * (1 - t);
+    final dx = xAlign.sign * 18 * (1 - t);
+    final scale = 0.94 + 0.06 * t;
 
     return Align(
       alignment: Alignment(xAlign, yAlign),
       child: Opacity(
         opacity: t,
         child: Transform.translate(
-          offset: Offset(0, dy),
+          offset: Offset(dx, dy),
           child: Transform.scale(
             scale: scale,
             child: _GlassChip(
@@ -421,7 +461,9 @@ class _GlassChip extends StatelessWidget {
 // ── Scene 3: invite ──────────────────────────────────────────────────────
 
 class _InviteScene extends StatefulWidget {
-  const _InviteScene();
+  final bool active;
+
+  const _InviteScene({required this.active});
 
   @override
   State<_InviteScene> createState() => _InviteSceneState();
@@ -431,18 +473,30 @@ class _InviteSceneState extends State<_InviteScene>
     with SingleTickerProviderStateMixin {
   late final AnimationController _c = AnimationController(
     vsync: this,
-    duration: const Duration(milliseconds: 800),
+    duration: const Duration(milliseconds: 700),
   );
 
   @override
   void initState() {
     super.initState();
+    _playIfActive();
+  }
+
+  @override
+  void didUpdateWidget(covariant _InviteScene old) {
+    super.didUpdateWidget(old);
+    if (widget.active && !old.active) {
+      _c.forward(from: 0);
+    }
+  }
+
+  void _playIfActive() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       if (MediaQuery.disableAnimationsOf(context)) {
         _c.value = 1;
-      } else {
-        _c.forward();
+      } else if (widget.active) {
+        _c.forward(from: 0);
       }
     });
   }
@@ -462,8 +516,11 @@ class _InviteSceneState extends State<_InviteScene>
       animation: _c,
       builder: (context, _) {
         final t = Curves.easeOutCubic.transform(_c.value);
-        final late = Curves.easeOut.transform(
-          ((_c.value - 0.3) / 0.7).clamp(0.0, 1.0),
+        final mid = Curves.easeOutCubic.transform(
+          ((_c.value - 0.2) / 0.8).clamp(0.0, 1.0),
+        );
+        final late = Curves.easeOutCubic.transform(
+          ((_c.value - 0.4) / 0.6).clamp(0.0, 1.0),
         );
         return Padding(
           padding: const EdgeInsets.fromLTRB(28, 0, 28, 0),
@@ -474,7 +531,7 @@ class _InviteSceneState extends State<_InviteScene>
               Opacity(
                 opacity: t,
                 child: Transform.translate(
-                  offset: Offset(0, 20 * (1 - t)),
+                  offset: Offset(0, 18 * (1 - t)),
                   child: Text(
                     'One tap\nresolves it.',
                     style: TextStyle(
@@ -489,21 +546,24 @@ class _InviteSceneState extends State<_InviteScene>
               ),
               const SizedBox(height: 28),
               Opacity(
-                opacity: late,
+                opacity: mid,
                 child: Transform.translate(
-                  offset: Offset(0, 14 * (1 - late)),
+                  offset: Offset(0, 12 * (1 - mid)),
                   child: const _ActionPreview(),
                 ),
               ),
               const Spacer(flex: 3),
               Opacity(
                 opacity: late,
-                child: Text(
-                  'Pay the bill. Track the package.\nJoin the meeting. Without digging.',
-                  style: TextStyle(
-                    fontSize: 16,
-                    height: 1.45,
-                    color: secondary,
+                child: Transform.translate(
+                  offset: Offset(0, 8 * (1 - late)),
+                  child: Text(
+                    'Pay the bill. Track the package.\nJoin the meeting. Without digging.',
+                    style: TextStyle(
+                      fontSize: 16,
+                      height: 1.45,
+                      color: secondary,
+                    ),
                   ),
                 ),
               ),
