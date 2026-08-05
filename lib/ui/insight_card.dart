@@ -46,7 +46,28 @@ class InsightCard extends StatelessWidget {
                   null => null,
                 },
                 actions: insight.actions,
+                correction: correctionFor(context, insight),
               ),
     );
   }
+}
+
+/// The "Not a bill" row for an insight, or null when it offers no correction.
+///
+/// Lives here rather than in the sheet because the sheet takes actions, not
+/// insights — and the phrasing has to name the family the user is looking at
+/// ("Not a package", "Not a subscription"), which only the insight knows.
+({String label, Future<void> Function() run})? correctionFor(
+  BuildContext context,
+  Insight insight,
+) {
+  final kind = insight.ignoreKind;
+  final subject = insight.correctionSubject;
+  if (kind == null || subject == null) return null;
+
+  final app = context.read<AppController>();
+  return (
+    label: 'Not a ${kind.noun}',
+    run: () => app.ignoreInsight(kind, subject),
+  );
 }

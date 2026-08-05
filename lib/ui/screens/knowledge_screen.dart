@@ -22,8 +22,14 @@ class KnowledgeScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final app = context.watch<AppController>();
-    final types = [...app.playbook.types]
+    final all = [...app.playbook.types]
       ..sort((a, b) => b.learnedAt.compareTo(a.learnedAt));
+
+    // A recipe whose links the user has reported as wrong is the one thing on
+    // this screen that needs a decision, so it gets pulled out of the list
+    // rather than sitting in it wearing a badge.
+    final suspect = [for (final t in all) if (app.isKnowledgeSuspect(t.id)) t];
+    final types = [for (final t in all) if (!app.isKnowledgeSuspect(t.id)) t];
 
     return GlassBackground(
       child: CupertinoPageScaffold(
@@ -37,7 +43,7 @@ class KnowledgeScreen extends StatelessWidget {
           child: ListView(
             padding: EdgeInsets.zero,
             children: [
-              if (types.isEmpty)
+              if (all.isEmpty)
                 const GlassEmptyState(
                   icon: CupertinoIcons.lightbulb,
                   title: 'Nothing Learned Yet',
@@ -54,7 +60,7 @@ class KnowledgeScreen extends StatelessWidget {
                     child: Column(
                       children: [
                         Text(
-                          '${types.length}',
+                          '${all.length}',
                           style: TextStyle(
                             fontSize: 40,
                             fontWeight: FontWeight.w800,
@@ -63,7 +69,7 @@ class KnowledgeScreen extends StatelessWidget {
                           ),
                         ),
                         Text(
-                          types.length == 1
+                          all.length == 1
                               ? 'thing NoMail taught itself'
                               : 'things NoMail taught itself',
                           style: TextStyle(
@@ -86,24 +92,49 @@ class KnowledgeScreen extends StatelessWidget {
                     ),
                   ),
                 ),
-                GlassSection(
-                  label: 'Learned types',
-                  children: [
-                    for (final type in types)
-                      GlassRow(
-                        icon: type.enabled
-                            ? CupertinoIcons.lightbulb_fill
-                            : CupertinoIcons.lightbulb_slash,
-                        iconTint:
-                            type.enabled ? Palette.accent(context) : null,
-                        title: type.label,
-                        titleMaxLines: 2,
-                        subtitle: _describe(type),
-                        subtitleMaxLines: 2,
-                        onTap: () => _showType(context, app, type),
-                      ),
-                  ],
-                ),
+                if (suspect.isNotEmpty)
+                  GlassSection(
+                    label: 'Needs review',
+                    children: [
+                      for (final type in suspect)
+                        GlassRow(
+                          icon: CupertinoIcons.exclamationmark_triangle_fill,
+                          iconTint: Palette.destructive(context),
+                          title: type.label,
+                          titleMaxLines: 2,
+                          subtitle: _suspectReason(app, type),
+                          subtitleMaxLines: 2,
+                          trailingCaption: 'Review',
+                          trailingCaptionColor: Palette.destructive(context),
+                          onTap: () => _showType(context, app, type),
+                        ),
+                    ],
+                  ),
+                if (suspect.isNotEmpty)
+                  const Footnote(
+                    'These recipes built links you told us went to the wrong '
+                    'page, and none that worked. Turning one off keeps the '
+                    'emails it recognises — they just stop carrying its link.',
+                  ),
+                if (types.isNotEmpty)
+                  GlassSection(
+                    label: 'Learned types',
+                    children: [
+                      for (final type in types)
+                        GlassRow(
+                          icon: type.enabled
+                              ? CupertinoIcons.lightbulb_fill
+                              : CupertinoIcons.lightbulb_slash,
+                          iconTint:
+                              type.enabled ? Palette.accent(context) : null,
+                          title: type.label,
+                          titleMaxLines: 2,
+                          subtitle: _describe(type),
+                          subtitleMaxLines: 2,
+                          onTap: () => _showType(context, app, type),
+                        ),
+                    ],
+                  ),
               ],
               const Footnote(
                 'Recipes are stored on this device only. Nothing about what '
@@ -126,24 +157,47 @@ class KnowledgeScreen extends StatelessWidget {
     return parts.join(' · ');
   }
 
+  /// The evidence, in the user's own terms — they reported these, so the row
+  /// should read back what they said rather than an internal verdict.
+  static String _suspectReason(AppController app, ContentType type) {
+    final failures = app.linkFailuresFor(type.id);
+    return '$failures link${failures == 1 ? '' : 's'} went to the wrong page'
+        '${type.enabled ? '' : ' · already off'}';
+  }
+
   Future<void> _showType(
     BuildContext context,
     AppController app,
     ContentType type,
   ) async {
+    final suspect = app.isKnowledgeSuspect(type.id);
+    final failures = app.linkFailuresFor(type.id);
+    final reports = app.linkReportsFor(type.id);
+
     final action = await showCupertinoModalPopup<String>(
       context: context,
       builder: (sheetContext) => CupertinoActionSheet(
         title: Text(type.label),
         message: Text(
-          'Recognises mail from ${type.match.senderDomains.join(', ')}.\n'
-          'Pulls out: ${type.fields.map((f) => f.name).join(', ')}.\n'
-          'Offers: ${type.actions.map((a) => a.label).join(', ')}.\n\n'
-          'Learned ${formatDay(type.learnedAt)}'
-          '${type.learnedByModel != null ? ' by ${type.learnedByModel}' : ''}.',
+          [
+            'Recognises mail from ${type.match.senderDomains.join(', ')}.',
+            'Pulls out: ${type.fields.map((f) => f.name).join(', ')}.',
+            'Offers: ${type.actions.map((a) => a.label).join(', ')}.',
+            '',
+            'Learned ${formatDay(type.learnedAt)}'
+                '${type.learnedByModel != null ? ' by ${type.learnedByModel}' : ''}.',
+            // Only stated when there is something to state: "0 of 0 reported"
+            // on a recipe nobody has tested reads like a fault.
+            if (reports > 0)
+              '$failures of $reports opened link'
+                  '${reports == 1 ? '' : 's'} went somewhere wrong.',
+          ].join('\n'),
         ),
         actions: [
           CupertinoActionSheetAction(
+            // A suspect recipe's likeliest right answer is "stop using it",
+            // so the destructive framing goes on the switch, not just delete.
+            isDestructiveAction: suspect && type.enabled,
             onPressed: () => Navigator.pop(sheetContext, 'toggle'),
             child: Text(type.enabled ? 'Turn off' : 'Turn on'),
           ),

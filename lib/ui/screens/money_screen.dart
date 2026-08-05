@@ -6,6 +6,7 @@ import 'package:provider/provider.dart';
 import '../../core/brand_icons.dart';
 import '../../core/palette.dart';
 import '../../domain/actions.dart';
+import '../../domain/ignore_list.dart';
 import '../../domain/models.dart';
 import '../../domain/price_watch.dart';
 import '../../state/app_controller.dart';
@@ -123,6 +124,14 @@ class MoneyScreen extends StatelessWidget {
                       ].join(' · '),
                       actions: actionsForPriceChange(
                           change, snapshot.subscriptions),
+                      // Corrects the subscription, which takes the change
+                      // with it — see the mapper's note on why there is one
+                      // switch here, not two.
+                      correction: (
+                        label: 'Not a subscription',
+                        run: () => app.ignoreInsight(
+                            IgnoreKind.subscription, change.service),
+                      ),
                     ),
                   ),
               ],
@@ -144,6 +153,11 @@ class MoneyScreen extends StatelessWidget {
                       title: sub.service,
                       message: _attribution(context, sub.sourceEmailId),
                       actions: actionsForSubscription(sub),
+                      correction: (
+                        label: 'Not a subscription',
+                        run: () => app.ignoreInsight(
+                            IgnoreKind.subscription, sub.service),
+                      ),
                     ),
                   ),
               ],
@@ -176,6 +190,11 @@ class MoneyScreen extends StatelessWidget {
                           from,
                       ].join(' · '),
                       actions: actionsForBill(bill),
+                      correction: (
+                        label: 'Not a bill',
+                        run: () =>
+                            app.ignoreInsight(IgnoreKind.bill, bill.issuer),
+                      ),
                     ),
                   ),
               ],

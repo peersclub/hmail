@@ -2,6 +2,8 @@ import '../../domain/backup_bundle.dart';
 import '../../domain/knowledge.dart';
 import '../../domain/models.dart';
 import '../../domain/scan_settings.dart';
+import '../../domain/ignore_list.dart';
+import '../store/ignore_store.dart';
 import '../store/insight_store.dart';
 import '../store/knowledge_store.dart';
 import '../store/settings_store.dart';
@@ -28,12 +30,14 @@ class BackupService {
   final KnowledgeStore knowledge;
   final SettingsStore settings;
   final TimelineOrderStore timeline;
+  final IgnoreStore ignores;
 
   const BackupService({
     required this.insights,
     required this.knowledge,
     required this.settings,
     required this.timeline,
+    this.ignores = const IgnoreStore(),
   });
 
   /// Reads everything currently on the device into one bundle. [now] is
@@ -47,6 +51,7 @@ class BackupService {
     final playbook = await knowledge.load();
     final scan = await settings.load();
     final order = await timeline.load();
+    final corrections = await ignores.load();
 
     return BackupBundle(
       createdAt: now ?? DateTime.now(),
@@ -56,6 +61,7 @@ class BackupService {
       playbook: playbook.isEmpty ? null : playbook.toJson(),
       settings: scan.toJson(),
       timelineOrder: order,
+      ignores: corrections.isEmpty ? null : corrections.toJson(),
     );
   }
 
@@ -89,6 +95,11 @@ class BackupService {
 
     if (bundle.timelineOrder.isNotEmpty) {
       await timeline.save(bundle.timelineOrder);
+    }
+
+    final corrections = bundle.ignores;
+    if (corrections != null) {
+      await ignores.save(IgnoreList.fromJson(corrections));
     }
 
     return RestoreOutcome(

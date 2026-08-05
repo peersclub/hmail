@@ -20,6 +20,7 @@ import '../data/mail/mail_source.dart';
 import '../data/mail/multi_gmail_source.dart';
 import '../data/store/accounts_store.dart';
 import '../data/store/backup_prefs_store.dart';
+import '../data/store/ignore_store.dart';
 import '../data/store/insight_store.dart';
 import '../data/store/knowledge_store.dart';
 import '../data/store/link_feedback_store.dart';
@@ -30,6 +31,7 @@ import '../domain/actions.dart';
 import '../domain/backfill_stats.dart';
 import '../domain/backup_bundle.dart';
 import '../domain/backup_prefs.dart';
+import '../domain/ignore_list.dart';
 import '../domain/knowledge.dart';
 import '../domain/link_feedback.dart';
 import '../domain/models.dart';
@@ -55,6 +57,7 @@ class AppController extends ChangeNotifier {
   final SettingsStore _settingsStore;
   final KnowledgeStore _knowledgeStore;
   final LinkFeedbackStore _feedbackStore;
+  final IgnoreStore _ignoreStore;
   final KnowledgeLearner _learner;
   final AiStatusService aiStatus;
 
@@ -95,6 +98,7 @@ class AppController extends ChangeNotifier {
     AiStatusService? aiStatusService,
     KnowledgeStore? knowledgeStore,
     LinkFeedbackStore? feedbackStore,
+    IgnoreStore? ignoreStore,
     KnowledgeLearner? learner,
     Map<String, BackupTarget>? backupTargets,
   })  : _backupTargetsOverride = backupTargets,
@@ -105,6 +109,7 @@ class AppController extends ChangeNotifier {
         _settingsStore = settingsStore ?? SettingsStore(),
         _knowledgeStore = knowledgeStore ?? KnowledgeStore(),
         _feedbackStore = feedbackStore ?? LinkFeedbackStore(),
+        _ignoreStore = ignoreStore ?? IgnoreStore(),
         _learner = learner ?? KnowledgeLearner(),
         aiStatus = aiStatusService ?? AiStatusService();
 
@@ -130,13 +135,63 @@ class AppController extends ChangeNotifier {
   /// than quietly wasting taps.
   List<String> get suspectKnowledge => _feedback.suspectKnowledgeTypes;
 
-  /// Records how a link turned out. The signal is worth persisting even
-  /// though nothing acts on it automatically yet — deleting a recipe is the
-  /// user's call, not ours.
+  /// Whether one recipe is currently under suspicion.
+  bool isKnowledgeSuspect(String typeId) => _feedback.isSuspect(typeId);
+
+  /// How many of this recipe's links the user reported as not working.
+  /// Login walls don't count — see [LinkOutcome.loginWall].
+  int linkFailuresFor(String typeId) => _feedback.failuresFor(typeId);
+
+  /// Answers recorded about this recipe's links at all, failures included.
+  int linkReportsFor(String typeId) =>
+      _feedback.forKnowledgeType(typeId).length;
+
+  /// Records how a link turned out. Retiring a recipe stays the user's call,
+  /// not ours — this only makes the evidence visible.
   Future<void> recordLinkFeedback(LinkFeedback feedback) async {
     _feedback = _feedback.add(feedback);
     notifyListeners();
     await _feedbackStore.save(_feedback);
+  }
+
+  IgnoreList _ignores = IgnoreList.empty;
+
+  /// The user's corrections ("this isn't a bill"), newest first.
+  IgnoreList get ignores => _ignores;
+
+  // Both inputs are immutable and always replaced wholesale, so identity is a
+  // sound cache key — and this getter runs inside build methods.
+  InsightSnapshot? _visibleCache;
+  InsightSnapshot? _visibleFor;
+  IgnoreList? _visibleWith;
+
+  InsightSnapshot get _visibleSnapshot {
+    if (!identical(_visibleFor, _snapshot) ||
+        !identical(_visibleWith, _ignores)) {
+      _visibleFor = _snapshot;
+      _visibleWith = _ignores;
+      _visibleCache = applyIgnores(_snapshot, _ignores);
+    }
+    return _visibleCache!;
+  }
+
+  /// Records that this kind of insight, from this name, isn't wanted. Applies
+  /// immediately and to everything that name sends in future.
+  Future<void> ignoreInsight(IgnoreKind kind, String subject) async {
+    if (subject.trim().isEmpty) return;
+    _ignores = _ignores.add(
+      IgnoreRule(kind: kind, subject: subject, at: DateTime.now()),
+    );
+    notifyListeners();
+    await _ignoreStore.save(_ignores);
+  }
+
+  /// Undoes one correction. The insights come back on the spot — they were
+  /// never deleted, only hidden.
+  Future<void> unignore(String key) async {
+    _ignores = _ignores.remove(key);
+    notifyListeners();
+    await _ignoreStore.save(_ignores);
   }
 
   Playbook _playbook = Playbook.empty;
@@ -160,7 +215,12 @@ class AppController extends ChangeNotifier {
   String get activityLine => _stageDetail ?? _stage.label;
 
   AppPhase get phase => _phase;
-  InsightSnapshot get snapshot => _snapshot;
+
+  /// What the app shows: the stored snapshot with the user's corrections
+  /// applied. Filtering here rather than at extraction time means an undone
+  /// correction brings its insights straight back with no rescan, and the
+  /// merge that feeds the next sync still sees the whole truth.
+  InsightSnapshot get snapshot => _visibleSnapshot;
   bool get isDemo => _isDemo;
   bool get isOAuthConfigured => _auth.isConfigured;
   String get aiLabel => _ai.label;
@@ -508,6 +568,7 @@ class AppController extends ChangeNotifier {
     _settings = await _settingsStore.load();
     _playbook = await _knowledgeStore.load();
     _feedback = await _feedbackStore.load();
+    _ignores = await _ignoreStore.load();
     final snap = await _store.load();
     if (snap != null) {
       _snapshot = snap;

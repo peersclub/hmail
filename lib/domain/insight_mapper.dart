@@ -2,6 +2,7 @@ import 'package:flutter/cupertino.dart';
 
 import '../ui/format.dart';
 import 'actions.dart';
+import 'ignore_list.dart';
 import 'insight.dart';
 import 'models.dart';
 
@@ -30,6 +31,7 @@ List<Insight> snapshotToInsights(InsightSnapshot s) {
       brandKey: b.issuer,
       weight: b.isOverdue ? 90 : 70,
       actions: actionsForBill(b),
+      ignoreKind: IgnoreKind.bill,
     ));
   }
 
@@ -56,6 +58,10 @@ List<Insight> snapshotToInsights(InsightSnapshot s) {
       brandKey: c.service,
       weight: 85,
       actions: actionsForPriceChange(c, s.subscriptions),
+      // A price change is suppressed by correcting the subscription it
+      // belongs to — two separate switches for one mistake would be worse
+      // than one.
+      ignoreKind: IgnoreKind.subscription,
     ));
   }
 
@@ -73,6 +79,7 @@ List<Insight> snapshotToInsights(InsightSnapshot s) {
       brandKey: sub.service,
       weight: 55,
       actions: actionsForSubscription(sub),
+      ignoreKind: IgnoreKind.subscription,
     ));
   }
 
@@ -88,6 +95,7 @@ List<Insight> snapshotToInsights(InsightSnapshot s) {
       brandKey: d.merchant,
       weight: d.status == DeliveryStatus.outForDelivery ? 60 : 45,
       actions: actionsForDelivery(d),
+      ignoreKind: IgnoreKind.delivery,
     ));
   }
 
@@ -102,6 +110,9 @@ List<Insight> snapshotToInsights(InsightSnapshot s) {
       brandKey: e.organizer,
       weight: 50,
       actions: actionsForEvent(e),
+      ignoreKind: IgnoreKind.event,
+      // Recurring noise comes from the organiser, not the meeting title.
+      ignoreSubject: e.organizer ?? e.title,
     ));
   }
 
@@ -121,6 +132,7 @@ List<Insight> snapshotToInsights(InsightSnapshot s) {
           : CupertinoIcons.arrow_counterclockwise,
       brandKey: p.source,
       weight: failed ? 92 : 78,
+      ignoreKind: IgnoreKind.payment,
       actions: [
         if (p.actionUrl != null)
           InsightAction(
@@ -151,6 +163,7 @@ List<Insight> snapshotToInsights(InsightSnapshot s) {
       icon: t.boardingReady ? CupertinoIcons.ticket_fill : CupertinoIcons.airplane,
       brandKey: t.provider,
       weight: t.boardingReady ? 80 : 65,
+      ignoreKind: IgnoreKind.travel,
       actions: [
         if (t.manageUrl != null)
           InsightAction(
@@ -177,6 +190,7 @@ List<Insight> snapshotToInsights(InsightSnapshot s) {
           : CupertinoIcons.shield,
       brandKey: r.merchant,
       weight: 58,
+      ignoreKind: IgnoreKind.returnItem,
       actions: [
         if (r.url != null)
           InsightAction(
@@ -199,6 +213,7 @@ List<Insight> snapshotToInsights(InsightSnapshot s) {
       icon: _feedIcon(f.kind),
       brandKey: f.source,
       weight: 20,
+      ignoreKind: IgnoreKind.feed,
       actions: [
         if (f.url != null)
           InsightAction(
@@ -221,6 +236,11 @@ List<Insight> snapshotToInsights(InsightSnapshot s) {
       icon: CupertinoIcons.exclamationmark_shield,
       weight: 100,
       actions: actionsForAttention(a),
+      // Security alerts are the one family where a wrong suppression is
+      // dangerous, so the correction keys on the exact title rather than a
+      // brand — it silences this alert, not everything from the sender.
+      ignoreKind: IgnoreKind.attention,
+      ignoreSubject: a.title,
     ));
   }
 

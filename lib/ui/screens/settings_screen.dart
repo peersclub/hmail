@@ -11,6 +11,7 @@ import '../format.dart';
 import '../glass/glass.dart';
 import 'ai_screen.dart';
 import 'backup_screen.dart';
+import 'corrections_screen.dart';
 import 'knowledge_screen.dart';
 import 'processing_screen.dart';
 import 'scan_screen.dart';
@@ -99,6 +100,17 @@ class SettingsScreen extends StatelessWidget {
                       '${app.playbook.length == 1 ? '' : 's'} NoMail taught itself',
               subtitleMaxLines: 2,
               onTap: () => _push(context, const KnowledgeScreen()),
+            ),
+            GlassRow(
+              icon: CupertinoIcons.hand_thumbsdown,
+              title: 'Corrections',
+              subtitle: app.ignores.isEmpty
+                  ? 'Nothing hidden — tap "Not a bill" on any insight'
+                  : '${app.ignores.length} thing'
+                      '${app.ignores.length == 1 ? '' : 's'} hidden from your '
+                      'insights',
+              subtitleMaxLines: 2,
+              onTap: () => _push(context, const CorrectionsScreen()),
             ),
             GlassRow(
               icon: CupertinoIcons.bell,

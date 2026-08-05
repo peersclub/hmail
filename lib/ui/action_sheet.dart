@@ -29,6 +29,7 @@ Future<void> showInsightActions(
   String? insightId,
   String? knowledgeTypeId,
   Future<void> Function(LinkFeedback)? onFeedback,
+  ({String label, Future<void> Function() run})? correction,
 }) async {
   if (actions.isEmpty) return;
 
@@ -49,7 +50,9 @@ Future<void> showInsightActions(
       action: planFor(action, installed, externalHosts: externalHosts),
   };
 
-  if (actions.length == 1) {
+  // One action normally means "just do it" — but not when there's a correction
+  // to offer, because a single-action row would then have no way to reach it.
+  if (actions.length == 1 && correction == null) {
     await _launchWithFallback(
       context, actions.single, actions, plans,
       insightId: insightId,
@@ -77,6 +80,17 @@ Future<void> showInsightActions(
               );
             },
             child: _ActionRow(action: action, plan: plans[action]),
+          ),
+        // Last, and destructive: correcting the app is the one row here that
+        // changes what NoMail shows rather than opening something.
+        if (correction != null)
+          CupertinoActionSheetAction(
+            isDestructiveAction: true,
+            onPressed: () {
+              Navigator.pop(sheetContext);
+              correction.run();
+            },
+            child: Text(correction.label),
           ),
       ],
       cancelButton: CupertinoActionSheetAction(

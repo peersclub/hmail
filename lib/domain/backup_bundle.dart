@@ -31,6 +31,12 @@ class BackupBundle {
   final Map<String, dynamic>? settings;
   final List<String> timelineOrder;
 
+  /// The user's corrections ("this isn't a bill"). Like the playbook, these are
+  /// not re-derivable: a rescan will happily surface every insight the user
+  /// already rejected, so dropping them here means handing someone back a list
+  /// of mistakes they had already cleaned up.
+  final Map<String, dynamic>? ignores;
+
   const BackupBundle({
     this.version = currentVersion,
     required this.createdAt,
@@ -40,6 +46,7 @@ class BackupBundle {
     this.playbook,
     this.settings,
     this.timelineOrder = const [],
+    this.ignores,
   });
 
   /// Rough item count for the UI summary ("1,204 insights · 18 learned types"),
@@ -70,6 +77,7 @@ class BackupBundle {
         'playbook': playbook,
         'settings': settings,
         'timelineOrder': timelineOrder,
+        'ignores': ignores,
       };
 
   factory BackupBundle.fromJson(Map<String, dynamic> json) => BackupBundle(
@@ -83,6 +91,9 @@ class BackupBundle {
         settings: (json['settings'] as Map?)?.cast<String, dynamic>(),
         timelineOrder:
             (json['timelineOrder'] as List?)?.cast<String>() ?? const [],
+        // Absent from bundles written before corrections existed — an older
+        // backup reads fine, it simply carries none.
+        ignores: (json['ignores'] as Map?)?.cast<String, dynamic>(),
       );
 
   /// Serialized bytes as stored in the cloud. UTF-8 JSON — small, diffable,

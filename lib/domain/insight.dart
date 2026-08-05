@@ -1,6 +1,7 @@
 import 'package:flutter/cupertino.dart';
 
 import 'actions.dart';
+import 'ignore_list.dart';
 
 /// The eight durable top-level domains an inbox generates. New insight types
 /// slot into one of these — the domain drives Timeline's filter chips and the
@@ -59,6 +60,13 @@ class Insight {
 
   final List<InsightAction> actions;
 
+  /// What a "this isn't a bill" correction on this row would suppress, and for
+  /// which name. Null means the row offers no correction — either because the
+  /// family has no useful generalisation, or because there is no name to
+  /// generalise on. [ignoreSubject] falls back to [brandKey].
+  final IgnoreKind? ignoreKind;
+  final String? ignoreSubject;
+
   const Insight({
     required this.id,
     required this.domain,
@@ -72,7 +80,16 @@ class Insight {
     this.brandKey,
     required this.weight,
     this.actions = const [],
+    this.ignoreKind,
+    this.ignoreSubject,
   });
+
+  /// The name a correction would apply to, or null when there isn't one.
+  String? get correctionSubject {
+    if (ignoreKind == null) return null;
+    final subject = (ignoreSubject ?? brandKey)?.trim();
+    return (subject == null || subject.isEmpty) ? null : subject;
+  }
 
   UrgencyTier get urgency {
     if (overdue) return UrgencyTier.imminent;
