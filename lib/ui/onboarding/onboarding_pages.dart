@@ -9,7 +9,6 @@ import 'dart:ui' as ui;
 import 'package:flutter/cupertino.dart';
 
 import '../../core/palette.dart';
-import '../glass/glass.dart';
 
 class OnboardingPageData {
   final Widget Function(BuildContext context) scene;

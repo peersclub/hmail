@@ -13,6 +13,7 @@ import 'package:hmail/domain/backfill_stats.dart';
 import 'package:hmail/state/app_controller.dart';
 import 'package:hmail/ui/glass/glass.dart';
 import 'package:hmail/ui/screens/money_screen.dart';
+import 'package:hmail/ui/screens/onboarding_screen.dart';
 import 'package:hmail/ui/screens/shell_screen.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -192,7 +193,8 @@ void main() {
       );
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 50));
-      expect(find.text(stats.annualRecurringDisplay), findsOneWidget);
+      expect(find.textContaining(stats.annualRecurringDisplay.replaceAll('/yr', '')),
+          findsWidgets);
     });
   });
 
@@ -210,7 +212,8 @@ void main() {
       await controller.init();
       await tester.pumpAndSettle();
 
-      expect(find.textContaining('Your inbox is a'), findsOneWidget);
+      expect(find.text('NoMail'), findsWidgets);
+      expect(find.textContaining('minus the inbox'), findsOneWidget);
       expect(controller.seenOnboarding, isFalse);
 
       await tester.tap(find.text('Skip'));
@@ -233,7 +236,7 @@ void main() {
       await controller.init();
       await tester.pumpAndSettle();
 
-      expect(find.textContaining('Your inbox is a'), findsNothing);
+      expect(find.byType(OnboardingScreen), findsNothing);
       expect(find.text('Welcome to NoMail'), findsOneWidget);
     });
 
