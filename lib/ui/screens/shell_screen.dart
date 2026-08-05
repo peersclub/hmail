@@ -1,9 +1,11 @@
 import 'package:flutter/cupertino.dart';
 import 'package:provider/provider.dart';
 
+import '../../core/palette.dart';
 import '../../state/app_controller.dart';
 import '../glass/glass.dart';
 import 'money_screen.dart';
+import 'money_shot_screen.dart';
 import 'settings_screen.dart';
 import 'timeline_screen.dart';
 import 'today_screen.dart';
@@ -19,6 +21,7 @@ class ShellScreen extends StatefulWidget {
 class _ShellScreenState extends State<ShellScreen> {
   int _index = 0;
   AppController? _app;
+  bool _moneyShotPresented = false;
 
   @override
   void didChangeDependencies() {
@@ -28,9 +31,12 @@ class _ShellScreenState extends State<ShellScreen> {
     final app = context.read<AppController>();
     if (!identical(app, _app)) {
       _app?.tabRequest.removeListener(_onTabRequest);
+      _app?.removeListener(_onAppChanged);
       _app = app;
       app.tabRequest.addListener(_onTabRequest);
+      app.addListener(_onAppChanged);
       _onTabRequest(); // consume one that fired before the shell mounted
+      _onAppChanged();
     }
   }
 
@@ -41,9 +47,34 @@ class _ShellScreenState extends State<ShellScreen> {
     if (mounted && tab >= 0 && tab <= 3) setState(() => _index = tab);
   }
 
+  void _onAppChanged() {
+    final app = _app;
+    if (app == null || !mounted) return;
+    if (app.showMoneyShot && !_moneyShotPresented) {
+      _moneyShotPresented = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted || !app.showMoneyShot) return;
+        Navigator.of(context, rootNavigator: true)
+            .push(
+          CupertinoPageRoute<void>(
+            fullscreenDialog: true,
+            builder: (_) => const MoneyShotScreen(),
+          ),
+        )
+            .whenComplete(() {
+          _moneyShotPresented = false;
+          // Swipe-dismiss / system back must clear the flag too, or the
+          // listener would push the modal again on the next notify.
+          if (_app?.showMoneyShot == true) _app?.dismissMoneyShot();
+        });
+      });
+    }
+  }
+
   @override
   void dispose() {
     _app?.tabRequest.removeListener(_onTabRequest);
+    _app?.removeListener(_onAppChanged);
     super.dispose();
   }
 
@@ -77,11 +108,10 @@ class _ShellScreenState extends State<ShellScreen> {
               right: 0,
               child: IgnorePointer(
                 child: Builder(builder: (context) {
-                  final dark = MediaQuery.platformBrightnessOf(context) ==
-                      Brightness.dark;
-                  final top = dark
-                      ? const Color(0xFF0A0C12)
-                      : const Color(0xFFF3F5FA);
+                  // Palette, not literals: these two colours are the top
+                  // stop of GlassBackground's wash, and a second copy of them
+                  // drifts out of sync with it the moment either changes.
+                  final top = Palette.backdropTop(context);
                   return Container(
                     height: MediaQuery.paddingOf(context).top + 28,
                     decoration: BoxDecoration(

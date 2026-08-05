@@ -2,6 +2,7 @@ import 'package:flutter/cupertino.dart';
 import 'package:provider/provider.dart';
 
 import '../state/app_controller.dart';
+import '../ui/screens/onboarding_screen.dart';
 import '../ui/screens/shell_screen.dart';
 import '../ui/screens/sign_in_screen.dart';
 
@@ -26,7 +27,9 @@ class NoMailApp extends StatelessWidget {
                 child: Center(child: CupertinoActivityIndicator()),
               );
             case AppPhase.signedOut:
-              return const SignInScreen();
+              return app.seenOnboarding
+                  ? const SignInScreen()
+                  : const OnboardingScreen();
             case AppPhase.syncing:
             case AppPhase.ready:
               return const ShellScreen();

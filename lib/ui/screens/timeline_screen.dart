@@ -291,7 +291,12 @@ class _FilterChips extends StatelessWidget {
                     borderRadius: BorderRadius.circular(100),
                     boxShadow: [
                       BoxShadow(
-                        color: const Color(0x33000000),
+                        // Palette, not a literal: a black shadow is invisible
+                        // against the dark backdrop, so the chip being dragged
+                        // lost the lift that says it is being dragged.
+                        color: Palette.isDark(context)
+                            ? const Color(0x99000000)
+                            : const Color(0x33101828),
                         blurRadius: 14,
                         offset: const Offset(0, 4),
                       ),
@@ -359,9 +364,13 @@ class _Chip extends StatelessWidget {
         child: Padding(
           padding: const EdgeInsets.symmetric(vertical: 5),
           child: Container(
-            height: 34,
+            // A minimum rather than a fixed height: the pill holds 14pt and
+            // 13pt text, which at large Dynamic Type needs more than 34 and
+            // overflowed the pill instead of growing it.
+            constraints: const BoxConstraints(minHeight: 34),
             alignment: Alignment.center,
-            padding: const EdgeInsets.symmetric(horizontal: 14),
+            padding:
+                const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
             decoration: BoxDecoration(
               color:
                   active ? Palette.accent(context) : Palette.badgeFill(context),

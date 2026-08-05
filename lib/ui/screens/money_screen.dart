@@ -442,10 +442,17 @@ class _LegendEntry extends StatelessWidget {
           decoration: BoxDecoration(shape: BoxShape.circle, color: color),
         ),
         const SizedBox(width: 5),
-        Text(
-          label,
-          style:
-              TextStyle(fontSize: 12, color: Palette.secondaryLabel(context)),
+        // The legend sits in a Wrap of min-size Rows, so a long service name
+        // has to ellipsize inside a bounded box rather than push the row wide.
+        ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 120),
+          child: Text(
+            label,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style:
+                TextStyle(fontSize: 12, color: Palette.secondaryLabel(context)),
+          ),
         ),
       ],
     );

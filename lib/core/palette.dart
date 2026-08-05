@@ -61,6 +61,19 @@ abstract final class Palette {
     return secondaryLabel(context);
   }
 
+  /// Top and bottom stops of the app's ambient backdrop wash.
+  ///
+  /// Lives here rather than inside `GlassBackground` because the status-bar
+  /// scrim has to fade from the *same* top colour. Two copies of a colour are
+  /// two colours as soon as one of them changes.
+  static Color backdropTop(BuildContext context) => isDark(context)
+      ? const Color(0xFF0A0C12)
+      : const Color(0xFFF3F5FA);
+
+  static Color backdropBottom(BuildContext context) => isDark(context)
+      ? const Color(0xFF101319)
+      : const Color(0xFFEDEFF4);
+
   /// Monochrome ink ramp for data viz.
   static List<Color> ramp(BuildContext context) {
     final base = accent(context);

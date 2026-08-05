@@ -8,6 +8,7 @@ library;
 import 'package:flutter/cupertino.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:hmail/app/nomail_app.dart';
 import 'package:hmail/domain/backfill_stats.dart';
 import 'package:hmail/state/app_controller.dart';
 import 'package:hmail/ui/glass/glass.dart';
@@ -124,10 +125,19 @@ void main() {
 
     testWidgets('demo meeting invite appears on Today with a join action',
         (tester) async {
+      useTallSurface(tester);
       final controller = AppController();
       await controller.enterDemo();
       await tester.pumpWidget(wrap(controller, const ShellScreen()));
+      await tester.pump();
       await tester.pump(const Duration(milliseconds: 900));
+
+      // First-scan modal covers Today — dismiss it before tapping a row.
+      if (find.text('Show my Today').evaluate().isNotEmpty) {
+        await tester.ensureVisible(find.text('Show my Today'));
+        await tester.tap(find.text('Show my Today'));
+        await tester.pumpAndSettle();
+      }
 
       final events = controller.snapshot.todayEvents;
       expect(events, isNotEmpty,
@@ -140,20 +150,113 @@ void main() {
       expect(find.text('Open calendar'), findsOneWidget);
     });
 
-    testWidgets('first sync raises the money-shot card, dismiss hides it',
+    testWidgets('first sync raises the money-shot modal, dismiss hides it',
         (tester) async {
+      useTallSurface(tester);
       final controller = AppController();
       await controller.enterDemo();
       expect(controller.showMoneyShot, isTrue,
           reason: 'an empty-to-populated sync is a first scan');
 
       await tester.pumpWidget(wrap(controller, const ShellScreen()));
+      await tester.pump(); // schedule the post-frame push
       await tester.pump(const Duration(milliseconds: 900));
-      expect(find.text('Hiding in your inbox'), findsOneWidget);
+      expect(find.text('HIDING IN YOUR INBOX'), findsOneWidget);
+      expect(find.text('Show my Today'), findsOneWidget);
 
-      controller.dismissMoneyShot();
-      await tester.pump(const Duration(milliseconds: 400));
-      expect(find.text('Hiding in your inbox'), findsNothing);
+      await tester.ensureVisible(find.text('Show my Today'));
+      await tester.tap(find.text('Show my Today'));
+      await tester.pumpAndSettle();
+      expect(controller.showMoneyShot, isFalse);
+      expect(find.text('HIDING IN YOUR INBOX'), findsNothing);
+    });
+
+    testWidgets('reduced-motion money-shot shows the final figure immediately',
+        (tester) async {
+      useTallSurface(tester);
+      final controller = AppController();
+      await controller.enterDemo();
+      final stats = controller.backfillStats;
+
+      await tester.pumpWidget(
+        ChangeNotifierProvider.value(
+          value: controller,
+          child: MediaQuery(
+            data: const MediaQueryData(
+              size: Size(390, 844),
+              disableAnimations: true,
+            ),
+            child: const CupertinoApp(home: ShellScreen()),
+          ),
+        ),
+      );
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 50));
+      expect(find.text(stats.annualRecurringDisplay), findsOneWidget);
+    });
+  });
+
+  group('first-run onboarding carousel', () {
+    testWidgets('cold signed-out boot shows page 1; Skip lands on SignIn',
+        (tester) async {
+      useTallSurface(tester);
+      final controller = AppController();
+      await tester.pumpWidget(
+        ChangeNotifierProvider.value(
+          value: controller,
+          child: const NoMailApp(),
+        ),
+      );
+      await controller.init();
+      await tester.pumpAndSettle();
+
+      expect(find.textContaining('Your inbox is a'), findsOneWidget);
+      expect(controller.seenOnboarding, isFalse);
+
+      await tester.tap(find.text('Skip'));
+      await tester.pumpAndSettle();
+
+      expect(controller.seenOnboarding, isTrue);
+      expect(find.text('Welcome to NoMail'), findsOneWidget);
+      expect(find.text('Continue with Google'), findsOneWidget);
+    });
+
+    testWidgets('seen_onboarding skips the carousel', (tester) async {
+      SharedPreferences.setMockInitialValues({'seen_onboarding': true});
+      final controller = AppController();
+      await tester.pumpWidget(
+        ChangeNotifierProvider.value(
+          value: controller,
+          child: const NoMailApp(),
+        ),
+      );
+      await controller.init();
+      await tester.pumpAndSettle();
+
+      expect(find.textContaining('Your inbox is a'), findsNothing);
+      expect(find.text('Welcome to NoMail'), findsOneWidget);
+    });
+
+    testWidgets('last page offers Google and sample auth', (tester) async {
+      useTallSurface(tester);
+      final controller = AppController();
+      await tester.pumpWidget(
+        ChangeNotifierProvider.value(
+          value: controller,
+          child: const NoMailApp(),
+        ),
+      );
+      await controller.init();
+      await tester.pumpAndSettle();
+
+      // Jump to last page — avoids intermediate layout under auth chrome.
+      final pageView = tester.widget<PageView>(find.byType(PageView));
+      pageView.controller!.jumpToPage(2);
+      await tester.pumpAndSettle();
+
+      expect(find.textContaining('One tap'), findsOneWidget);
+      expect(find.text('Continue with Google'), findsOneWidget);
+      expect(find.text('Explore with Sample Data'), findsOneWidget);
     });
   });
 

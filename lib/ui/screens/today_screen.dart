@@ -75,7 +75,6 @@ class TodayScreen extends StatelessWidget {
               // the snapshot is empty the scanning state below carries it.
               if (app.phase == AppPhase.syncing && !snapshot.isEmpty)
                 _activityLine(context, app),
-              if (app.showMoneyShot) _moneyShotCard(context, app),
               if (snapshot.brief != null)
                 _briefCard(context, snapshot.brief!,
                     ai: app.aiLabel != 'off' && !app.isDemo),
@@ -158,6 +157,7 @@ class TodayScreen extends StatelessWidget {
                 const SizedBox(height: 18),
                 Text(
                   'Scanning your Gmail',
+                  textAlign: TextAlign.center,
                   style: TextStyle(
                     fontSize: 19,
                     fontWeight: FontWeight.w700,
@@ -294,60 +294,6 @@ class TodayScreen extends StatelessWidget {
     );
   }
 
-  /// First-scan celebration: what the pipeline just found hiding in the
-  /// inbox. Shown once per fresh account, dismissed by hand.
-  Widget _moneyShotCard(BuildContext context, AppController app) {
-    final stats = app.backfillStats;
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 0, 20, 14),
-      child: GlassCard(
-        padding: const EdgeInsets.fromLTRB(20, 18, 12, 18),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            IconBadge(CupertinoIcons.sparkles,
-                tint: Palette.accent(context)),
-            const SizedBox(width: 14),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Hiding in your inbox',
-                    style: TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w600,
-                      color: Palette.accent(context),
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    stats.headline,
-                    style: TextStyle(
-                      fontSize: 16,
-                      height: 1.35,
-                      letterSpacing: -0.2,
-                      color: Palette.label(context),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            CupertinoButton(
-              padding: const EdgeInsets.all(4),
-              onPressed: app.dismissMoneyShot,
-              child: Icon(
-                CupertinoIcons.xmark_circle_fill,
-                size: 22,
-                color: Palette.secondaryLabel(context),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
   Widget _briefCard(BuildContext context, DailyBrief brief,
       {required bool ai}) {
     return Padding(
@@ -358,7 +304,11 @@ class TodayScreen extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
+              // An AI-written headline has no length contract, so cap it here
+              // rather than trust the model to be brief.
               brief.headline,
+              maxLines: 4,
+              overflow: TextOverflow.ellipsis,
               style: TextStyle(
                 fontSize: 22,
                 fontWeight: FontWeight.w600,
@@ -404,11 +354,18 @@ class TodayScreen extends StatelessWidget {
                 Icon(CupertinoIcons.sparkles,
                     size: 13, color: Palette.secondaryLabel(context)),
                 const SizedBox(width: 5),
-                Text(
-                  ai ? 'AI Brief' : 'Daily brief',
-                  style: TextStyle(
-                    fontSize: 13,
-                    color: Palette.secondaryLabel(context),
+                // Flexible: the label is short, but an icon plus unbounded text
+                // in a Row still overflows once Dynamic Type scales the text
+                // and leaves the icon's fixed 13pt alone.
+                Flexible(
+                  child: Text(
+                    ai ? 'AI Brief' : 'Daily brief',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 13,
+                      color: Palette.secondaryLabel(context),
+                    ),
                   ),
                 ),
               ],

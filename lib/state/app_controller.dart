@@ -124,6 +124,9 @@ class AppController extends ChangeNotifier {
   bool _hadInsights = false;
   bool _showMoneyShot = false;
 
+  /// First-run story carousel. Loaded in [init]; flipped by [completeOnboarding].
+  bool _seenOnboarding = false;
+
   ScanSettings _settings = const ScanSettings();
   SyncReport _lastReport = SyncReport.empty();
   SyncStage _stage = SyncStage.idle;
@@ -281,9 +284,20 @@ class AppController extends ChangeNotifier {
   bool get showMoneyShot => _showMoneyShot;
   BackfillStats get backfillStats => BackfillStats.fromSnapshot(_snapshot);
 
+  /// Whether the pre-auth story carousel has been skipped or finished.
+  bool get seenOnboarding => _seenOnboarding;
+
   void dismissMoneyShot() {
     _showMoneyShot = false;
     notifyListeners();
+  }
+
+  /// Persists that the intro carousel is done (Skip or last-page Continue).
+  Future<void> completeOnboarding() async {
+    if (_seenOnboarding) return;
+    _seenOnboarding = true;
+    notifyListeners();
+    await _settingsStore.setSeenOnboarding(true);
   }
 
   /// Switching a recipe off keeps it in the playbook, so the learner won't
@@ -586,6 +600,7 @@ class AppController extends ChangeNotifier {
   Future<void> init() async {
     await AiKey.load(); // user-entered key must beat the .env fallback
     _settings = await _settingsStore.load();
+    _seenOnboarding = await _settingsStore.loadSeenOnboarding();
     _playbook = await _knowledgeStore.load();
     _backupPrefs = await _backupPrefsStore.load();
     _knownAccounts = await _accountsStore.load();

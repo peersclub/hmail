@@ -81,7 +81,8 @@ class _BackupScreenState extends State<BackupScreen> {
                   'never your mail. Google Drive backups live in a hidden '
                   'app-only folder; no other app can read them.',
                 ),
-                const SizedBox(height: kDockClearance),
+                // No dock on a pushed screen — only breathing room.
+                const SizedBox(height: 24),
               ],
             ),
           ),

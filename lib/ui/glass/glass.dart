@@ -96,9 +96,10 @@ class GlassBackground extends StatelessWidget {
         gradient: LinearGradient(
           begin: Alignment.topCenter,
           end: Alignment.bottomCenter,
-          colors: dark
-              ? const [Color(0xFF0A0C12), Color(0xFF101319)]
-              : const [Color(0xFFF3F5FA), Color(0xFFEDEFF4)],
+          colors: [
+            Palette.backdropTop(context),
+            Palette.backdropBottom(context),
+          ],
         ),
       ),
       child: Stack(
@@ -212,9 +213,14 @@ class GlassHeader extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                // A date eyebrow ("Wednesday, 5 August") at 34pt scaled is
+                // wider than any phone; two lines then ellipsis beats a
+                // clipped screen title.
                 if (eyebrow != null) ...[
                   Text(
                     eyebrow!,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
                     style: TextStyle(
                       fontSize: 15,
                       color: Palette.secondaryLabel(context),
@@ -224,6 +230,8 @@ class GlassHeader extends StatelessWidget {
                 ],
                 Text(
                   title,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
                   style: TextStyle(
                     fontSize: 34,
                     fontWeight: FontWeight.w700,
@@ -333,6 +341,7 @@ class GlassRow extends StatelessWidget {
           IconBadge(icon, tint: iconTint),
           const SizedBox(width: 14),
           Expanded(
+            flex: 2,
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -363,53 +372,70 @@ class GlassRow extends StatelessWidget {
           ),
           if (trailing != null || trailingCaption != null) ...[
             const SizedBox(width: 12),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: [
-                if (trailing != null)
-                  Text(
-                    trailing!,
-                    style: TextStyle(
-                      fontSize: 17,
-                      fontWeight: FontWeight.w600,
-                      letterSpacing: -0.4,
-                      color: Palette.label(context),
-                      fontFeatures: const [ui.FontFeature.tabularFigures()],
-                    ),
-                  ),
-                if (trailingCaption != null) ...[
-                  const SizedBox(height: 3),
-                  if (trailingCaptionPill)
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 8, vertical: 2.5),
-                      decoration: BoxDecoration(
-                        color: (trailingCaptionColor ??
-                                Palette.secondaryLabel(context))
-                            .withValues(alpha: 0.13),
-                        borderRadius: BorderRadius.circular(100),
+            // Flexible, not a bare Column: a non-flex child takes its full
+            // intrinsic width, so at 2x Dynamic Type an amount plus a caption
+            // ("₹1,840" + "Due 12 September") outgrew the row and overflowed
+            // it — the one bug behind most of the app's layout complaints,
+            // since every screen's rows are this widget. flex 1 against the
+            // title's 2 gives it at most a third and forces it to ellipsize
+            // inside that instead of pushing the row apart.
+            Flexible(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  if (trailing != null)
+                    Text(
+                      trailing!,
+                      maxLines: 1 + axBoost,
+                      overflow: TextOverflow.ellipsis,
+                      textAlign: TextAlign.end,
+                      style: TextStyle(
+                        fontSize: 17,
+                        fontWeight: FontWeight.w600,
+                        letterSpacing: -0.4,
+                        color: Palette.label(context),
+                        fontFeatures: const [ui.FontFeature.tabularFigures()],
                       ),
-                      child: Text(
+                    ),
+                  if (trailingCaption != null) ...[
+                    const SizedBox(height: 3),
+                    if (trailingCaptionPill)
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 8, vertical: 2.5),
+                        decoration: BoxDecoration(
+                          color: (trailingCaptionColor ??
+                                  Palette.secondaryLabel(context))
+                              .withValues(alpha: 0.13),
+                          borderRadius: BorderRadius.circular(100),
+                        ),
+                        child: Text(
+                          trailingCaption!,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                            color: trailingCaptionColor ??
+                                Palette.secondaryLabel(context),
+                          ),
+                        ),
+                      )
+                    else
+                      Text(
                         trailingCaption!,
+                        maxLines: 1 + axBoost,
+                        overflow: TextOverflow.ellipsis,
+                        textAlign: TextAlign.end,
                         style: TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w600,
+                          fontSize: 13,
                           color: trailingCaptionColor ??
                               Palette.secondaryLabel(context),
                         ),
                       ),
-                    )
-                  else
-                    Text(
-                      trailingCaption!,
-                      style: TextStyle(
-                        fontSize: 13,
-                        color: trailingCaptionColor ??
-                            Palette.secondaryLabel(context),
-                      ),
-                    ),
+                  ],
                 ],
-              ],
+              ),
             ),
           ],
         ],
@@ -669,35 +695,43 @@ class GlassDock extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: EdgeInsets.only(
-          bottom: MediaQuery.paddingOf(context).bottom > 0 ? 0 : 8),
-      child: CNTabBar(
-        items: const [
-          CNTabBarItem(
-            label: 'Today',
-            icon: CNIcon.symbol('sun.max'),
-            activeIcon: CNIcon.symbol('sun.max.fill'),
-          ),
-          CNTabBarItem(
-            label: 'Money',
-            icon: CNIcon.symbol('creditcard'),
-            activeIcon: CNIcon.symbol('creditcard.fill'),
-          ),
-          CNTabBarItem(
-            label: 'Timeline',
-            icon: CNIcon.symbol('square.stack.3d.up'),
-            activeIcon: CNIcon.symbol('square.stack.3d.up.fill'),
-          ),
-          CNTabBarItem(
-            label: 'Settings',
-            icon: CNIcon.symbol('gearshape'),
-            activeIcon: CNIcon.symbol('gearshape.fill'),
-          ),
-        ],
-        currentIndex: index,
-        onTap: onChanged,
-        tint: Palette.accent(context),
+    // The native tab bar's labels overflow its fixed pill at accessibility
+    // text sizes. Clamping the scale here matches what iOS itself does — its
+    // tab bars stop growing labels and offer the large-content viewer on a
+    // long press instead. Content everywhere else in the app still scales
+    // fully; this is the one chrome element that cannot.
+    return MediaQuery.withClampedTextScaling(
+      maxScaleFactor: 1.3,
+      child: Padding(
+        padding: EdgeInsets.only(
+            bottom: MediaQuery.paddingOf(context).bottom > 0 ? 0 : 8),
+        child: CNTabBar(
+          items: const [
+            CNTabBarItem(
+              label: 'Today',
+              icon: CNIcon.symbol('sun.max'),
+              activeIcon: CNIcon.symbol('sun.max.fill'),
+            ),
+            CNTabBarItem(
+              label: 'Money',
+              icon: CNIcon.symbol('creditcard'),
+              activeIcon: CNIcon.symbol('creditcard.fill'),
+            ),
+            CNTabBarItem(
+              label: 'Timeline',
+              icon: CNIcon.symbol('square.stack.3d.up'),
+              activeIcon: CNIcon.symbol('square.stack.3d.up.fill'),
+            ),
+            CNTabBarItem(
+              label: 'Settings',
+              icon: CNIcon.symbol('gearshape'),
+              activeIcon: CNIcon.symbol('gearshape.fill'),
+            ),
+          ],
+          currentIndex: index,
+          onTap: onChanged,
+          tint: Palette.accent(context),
+        ),
       ),
     );
   }

@@ -34,6 +34,11 @@ resolves it.
 - [[Backup & Restore]] — iCloud and Google Drive backup
 - [[Development Log]] — dated record of every session
 
+**Skills** (reusable across apps; Cursor mirror under `~/.cursor/skills/`)
+- [[Skills/animated-onboarding/SKILL]] — first-run carousel + post-value
+  money-shot reveal; see also [[Skills/animated-onboarding/reference]] and
+  [[Skills/animated-onboarding/nomail-worked-example]]
+
 ## The one-paragraph version
 
 Hand-written rules extract what they recognise; a **learned playbook** handles

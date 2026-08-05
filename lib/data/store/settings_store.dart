@@ -12,6 +12,10 @@ class SettingsStore {
   // handled by ScanSettings.fromJson's per-key fallbacks instead.
   static const _key = 'scan_settings_v1';
 
+  /// Dedicated key (not inside the scan JSON) so schema churn never re-shows
+  /// the first-run carousel.
+  static const _seenOnboardingKey = 'seen_onboarding';
+
   Future<ScanSettings> load() async {
     final prefs = await SharedPreferences.getInstance();
     final raw = prefs.getString(_key);
@@ -26,6 +30,16 @@ class SettingsStore {
   Future<void> save(ScanSettings settings) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_key, jsonEncode(settings.toJson()));
+  }
+
+  Future<bool> loadSeenOnboarding() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getBool(_seenOnboardingKey) ?? false;
+  }
+
+  Future<void> setSeenOnboarding(bool seen) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_seenOnboardingKey, seen);
   }
 
   Future<void> clear() async {
