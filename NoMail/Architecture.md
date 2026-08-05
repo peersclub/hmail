@@ -28,7 +28,10 @@ lib/
 │   ├── knowledge_mapper.dart     # learned match → typed insight
 │   ├── brief_builder.dart        # deterministic daily brief
 │   ├── backfill_stats.dart       # first-scan "hiding in your inbox" summary
+│   ├── price_watch.dart          # price-hike detection (pre-merge diff)
+│   ├── ignore_list.dart          # the user's corrections ("not a bill")
 │   ├── scan_settings.dart        # user-controlled scan scope
+│   ├── scan_cost.dart            # pre-scan estimate from live model pricing
 │   ├── sync_report.dart          # per-sync receipt + AI audit summary
 │   └── backup_bundle.dart / backup_prefs.dart
 ├── data/
@@ -38,18 +41,20 @@ lib/
 │   ├── extractors/               # extractors.dart, events.dart, links.dart
 │   ├── ai/                       # insight_ai (interface + verdicts),
 │   │                             # openrouter_ai, knowledge_learner, ai_status
-│   ├── store/                    # insight, knowledge, settings,
-│   │                             # backup_prefs, timeline_order
+│   ├── store/                    # insight, knowledge, settings, ignore,
+│   │                             # link_feedback, backup_prefs, timeline_order
 │   ├── backup/                   # backup_service + Drive/iCloud targets
 │   └── sync/sync_engine.dart     # the pipeline
 ├── core/                         # palette, brand_icons, action_launcher,
-│                                 # notification_service
+│                                 # notification_service, upcoming_alerts,
+│                                 # installed_apps, host_routing
 └── ui/
     ├── glass/glass.dart          # the design system (every surface)
     ├── insight_card.dart         # ONE row renders any Insight
     ├── action_sheet.dart
-    └── screens/                  # today, money, timeline, settings,
-                                  # ai, scan, processing, knowledge, sign_in
+    └── screens/                  # today, money, timeline, settings, ai, scan,
+                                  # processing, knowledge, corrections,
+                                  # backup, web_view, sign_in
 ```
 
 ## The pipeline
@@ -65,15 +70,25 @@ lib/
    testable.
 3. **Apply knowledge** — the learned playbook runs over whatever the rules
    didn't claim. Still no model, still free.
-4. **Merge** — `InsightStore.merge` dedupes against the previous snapshot by
+4. **Watch prices** — `detectPriceChanges` diffs the previous snapshot's
+   subscriptions against the fresh ones. This has to happen *before* step 5,
+   because merge collapses subscriptions by service name and the old amount
+   stops existing. See "Price watch" below.
+5. **Merge** — `InsightStore.merge` dedupes against the previous snapshot by
    natural key, keeping the most recent version of each insight.
-5. **Audit (AI, optional)** — the model sees the extracted insights next to
+6. **Audit (AI, optional)** — the model sees the extracted insights next to
    their source emails and returns `InsightVerdicts {rejected, renamed}`,
    applied by the pure `applyVerdicts()`. It also writes the daily brief.
-6. **Learn (AI, optional)** — anything still unrecognised is clustered by
+7. **Learn (AI, optional)** — anything still unrecognised is clustered by
    sender and offered to `KnowledgeLearner`, which writes new playbook
    recipes. These take effect from the *next* sync.
-7. **Save** — snapshot to `InsightStore`, new recipes to `KnowledgeStore`.
+8. **Save** — snapshot to `InsightStore`, new recipes to `KnowledgeStore`.
+
+Afterwards the controller rebuilds the proactive alert schedule from the fresh
+snapshot (`buildUpcomingAlerts`) — renewal T-2d, bill T-1d, return window T-1d.
+It is rebuilt from scratch every sync rather than maintained: the builder is
+pure and the scheduler cancels its own id namespace first, so a bill that got
+paid simply stops being scheduled.
 
 Every AI step is optional and never fatal: with no key, or the AI switch off,
 rules carry the whole load and a rule-built brief always exists.
@@ -96,6 +111,50 @@ URL containing a literal `{placeholder}`. Invalid entries are dropped with a
 reason. Users see every recipe under Settings → Knowledge and can disable or
 forget it; disabled ones still count as "known" so the learner never pays to
 rediscover a rejected recipe.
+
+## Price watch
+
+`domain/price_watch.dart` diffs two snapshots' subscriptions to find "Netflix
+went ₹649 → ₹699". Two design points carry the whole feature.
+
+**It must run before the merge.** `Subscription.dedupeKey` is just the lowercased
+service name, so `InsightStore.merge` keeps one row per service — after it runs,
+the old amount is gone from every store in the app. The detector also reuses
+merge's own collapse rule (latest `lastSeen` wins) so the "new" price it reports
+is always the number the Money tab will render; a different rule would let the
+two disagree.
+
+**One wrong price claim costs more trust than ten right ones earn**, so each
+guard exists to kill a class of false hike: same currency and cadence, a
+*different* source email (an extractor fix changing what one email yields is not
+a merchant raising a price), newer evidence only (a backfilled receipt must not
+read as a hike running backwards), and floors of both 1% and one minor unit.
+`applyVerdicts` extends to price changes too — a change is only as real as the
+subscription it was measured on.
+
+The Money hero shows the net monthly drift, and deliberately does **not** call it
+"savings". The app can prove a price moved; it cannot prove the user cancelled
+anything. Overclaiming here would cost exactly the trust that makes the number
+worth reading.
+
+## Corrections
+
+`domain/ignore_list.dart` is the user's veto. Extraction is heuristic, so it is
+permanently wrong about something, and before this the user had no way to say so.
+
+A rule is `(IgnoreKind, subject)` — not an email id — because "GitHub is not a
+delivery" has to still be true next week when GitHub sends another release note.
+The subject is the name the extractor already derived from the sender, which is
+the granularity a user means when they tap "Not a package". Matching is exact: a
+substring rule would let "Amazon" silence "Amazon Pay".
+
+`applyIgnores` runs on the way **out** of the store, in `AppController.snapshot`,
+never on the way in. So undoing a correction restores its insights instantly with
+no rescan, and the raw snapshot that feeds the next sync's merge still sees
+everything. Rules live in their own store key rather than inside the snapshot —
+they are user intent, and a snapshot version bump must never discard them. They
+ride in the backup bundle for the same reason the playbook does: a rescan
+re-derives insights but not decisions.
 
 ## Where a tap goes
 
@@ -177,6 +236,20 @@ mapper block — zero navigation code.**
   before distribution.
 - **Store keys are versioned** and bumped whenever extraction changes
   materially, forcing a clean re-extract instead of merging onto stale data.
+  Currently `insight_snapshot_v9`. User *decisions* — corrections, learned
+  recipes — live in their own keys precisely so a bump can't throw them away.
+- **Never ship a number the app can't defend.** The scan cost estimate reads
+  live prices from OpenRouter's models endpoint rather than a table in the
+  build, and reports no money at all when that fails; the Money drift line says
+  "vs before", not "saved". Both screens exist to be trusted, and a stale or
+  overclaimed figure costs more than a missing one.
+- **The iPad is a real device, not a wide phone.** The glass system was drawn
+  for phone widths, so `ReadableWidth` (560pt) caps page content and
+  `showSheet` (480pt) caps every popup. The cap sits just above an iPhone Pro
+  Max so it is provably inert on phones — a test asserts that, because silently
+  narrowing the iPhone layout would be worse than the stretch this fixed. The
+  WebView keeps full width on purpose: sites are responsive, and a wide
+  viewport is what an iPad is *for*.
 
 Related: [[Requirements]], [[Roadmap]], [[Settings Plan]], [[Actions API]],
 [[One App Vision]], [[Development Log]]

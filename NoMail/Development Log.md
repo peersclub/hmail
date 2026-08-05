@@ -365,3 +365,92 @@ learnable instead — one "open outside" tap remembers the host.
 
 367 tests, analyzer clean, on iPhone and iPad.
 
+
+## 2026-08-05 — Phase B lands, and two loops get closed (`8396410` → `0bd4b8f`)
+
+Six commits over what the previous session's handoff note listed as pending.
+
+**Gmail hardening (`8396410`).** Two things the concurrent session finished but
+never committed. `_listPages` follows `nextPageToken` until the per-query cap is
+filled — a busy inbox used to stop silently at 25 per domain. The first request
+is byte-identical to the old one, so default traffic is unchanged; extra pages
+happen only when Gmail returns short pages with more to give. `_withRetry`
+retries 429, 403-with-a-rate-limit-reason and 5xx, but deliberately **not**
+network-level exceptions: offline, sleeping between retries turns a fast failure
+into a hung scan. `RetryAfterClient` exists because `GmailApi` discards response
+headers before throwing, so the server's own pacing is otherwise invisible.
+
+**Proactive alerts (`d2d1a8a`, wired in `2a63e61`).** Renewal T-2d, bill T-1d,
+return window T-1d — value that arrives without opening the app. The builder is
+pure and clock-free; ids are FNV-1a over a dedupe key rather than
+`String.hashCode`, which is not stable across runs. That stability is the whole
+mechanism: the scheduler cancels its own 50000–59999 namespace and reschedules,
+so a renewal that moved or a bill that got paid simply stops being scheduled,
+with no bookkeeping store. The machinery arrived complete and *unwired* —
+nothing called `syncUpcomingAlerts` until this session.
+
+**Price-hike detection (`2a63e61`) — the pay trigger.** "Netflix went ₹649 →
+₹699" is the one insight a free inbox never gives you, and both halves were
+already stored; only the diff was missing.
+
+Timing is the design. `InsightStore.merge` collapses subscriptions by service
+(`dedupeKey` is the lowercased name), so the moment a snapshot is merged the old
+amount is gone. `detectPriceChanges` runs on the **pre-merge** pair and reuses
+merge's own collapse rule (latest `lastSeen` wins), so the "new" price it
+reports is always the number the Money tab renders.
+
+Every guard kills a specific class of false hike, because one wrong price claim
+costs more trust than ten real ones earn: same currency and cadence (₹649/mo vs
+$8.99/mo, or monthly vs the same plan billed yearly, are different products);
+different source email (an extractor fix changing what one email yields is not a
+merchant raising a price); newer evidence only (a backfilled old receipt must
+not read as a hike running backwards); and floors of 1% *and* one minor unit.
+
+`applyVerdicts` now filters and renames price changes too — a change is only as
+real as the subscription it was measured on, and a phantom hike left behind by a
+rejected email would be the loudest wrong insight in the app.
+
+The Money hero gained a drift line, deliberately **not** called "savings": the
+app can prove a price moved, it cannot prove the user cancelled anything, and a
+fabricated savings figure would poison the one surface whose entire value is
+being trustworthy. Demo mode gets a fabricated last-month snapshot
+(`demoHistory`) rather than a canned `PriceChange`, so demo keeps exercising the
+real detector; Spotify is carried at its current price as a no-change control.
+
+**Corrections (`5b319ae`).** Extraction is heuristic, so it is permanently wrong
+about something, and the user was the only source of ground truth in the app
+with no way to use it. Every insight row now offers "Not a package".
+
+A rule is not keyed to one email — "GitHub is not a delivery" has to still be
+true next week — so it is (kind, subject), where subject is the name the
+extractor already derived from the sender. Matching is exact: a substring rule
+would let "Amazon" silence "Amazon Pay". Filtering happens on the way *out* of
+the store, so undoing brings insights straight back with no rescan and the merge
+feeding the next sync still sees the whole truth. Corrections join the backup
+bundle for the same reason the playbook did: a rescan re-derives insights but
+not the user's decisions.
+
+Same commit: `isSuspect` had been computed since the WebView landed and was
+visible nowhere. Recipes whose links were reported wrong now lift out of the
+Knowledge list into "Needs review", with the evidence in the user's own words.
+
+**Pre-scan cost (`2480c75`).** The Scanning screen's own doc comment already
+promised the estimate; the card showed only an email count. Two things make the
+number honest enough to display: both AI calls are hard-capped (audit 60 source
++ 30 unclassified lines, `max_tokens: 1500`; learner 5×3 samples,
+`max_tokens: 2000`), so the top of the range is a real ceiling; and prices come
+from OpenRouter's own models endpoint, not a table shipped in the build, because
+a stale price list on a trust surface is worse than no number. Verified live —
+Haiku 4.5 at $1/M in, $5/M out puts a default 150-email scan at about
+$0.01–$0.03. Sub-cent totals read "under a cent"; "$0.00" looks like a bug.
+
+**iPad (`0bd4b8f`).** The app builds as a native iPad app but everything was
+laid out against phone widths. `ReadableWidth` caps content at 560pt — just past
+an iPhone Pro Max, so the phone layout is untouched and a test proves the
+constraint is inert there. Applied at the shell's `IndexedStack` (all four tabs
+at once) and each pushed screen; the backdrop still fills the screen. Sheets get
+a tighter 480pt cap via `showSheet`, which every popup call site now goes
+through. The WebView keeps full width on purpose — sites are responsive and a
+wide viewport is the iPad's actual advantage — so only its chrome is capped.
+
+475 tests green, analyzer clean.

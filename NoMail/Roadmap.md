@@ -39,6 +39,16 @@ reporting, notifications, Drive/iCloud backup.
 with its feedback loop, per-host "open outside" memory, and a destination
 marker on every action row. See [[Architecture]].
 
+**Money intelligence** (2026-08-05) — price-hike detection with four guards
+against false hikes, the drift line on the Money hero, proactive renewal/bill/
+return alerts, and Gmail pagination + quota backoff. Phase B of the pay-worthy
+arc, less the two items still open below.
+
+**Trust loops** (2026-08-05) — per-insight corrections ("Not a package") with a
+local ignore list that survives rescans and restores; suspect learned recipes
+surfaced in Knowledge → Needs review; a pre-scan cost estimate priced from
+OpenRouter's live catalog.
+
 ## Next
 
 **Ship-blocking**
@@ -46,23 +56,22 @@ marker on every action row. See [[Architecture]].
       the IPA as a Flutter asset
 - [ ] Google CASA Tier 2 assessment for the restricted Gmail scope (annual;
       start early, it gates public release)
-- [ ] Rotate the OpenRouter key and set a monthly spend cap
+- [ ] Rotate the OpenRouter key and set a monthly spend cap — **needs the
+      account owner**; the key pasted in chat on 2026-08-01 has no cap
+      (`limit: null`) and should be treated as compromised
 
 **Product**
-- [ ] Act on the link-feedback signal: surface `isSuspect` recipes in Settings →
-      Knowledge so a bad AI-written URL template is visible, not just recorded
-- [ ] Per-insight feedback ("this isn't a bill") feeding a local ignore list —
-      turns corrections into training data with no server
-- [ ] Pre-scan cost estimate ("~200 emails, about ₹2")
+- [ ] Unused-subscription heuristic — paying but no usage signals in mail
+- [ ] Annual spend report (shareable)
 - [ ] Home-screen widget + Live Activity for out-for-delivery parcels
       (ranked highest-ROI iOS surfaces in [[One App Vision]])
 
 **Quality**
-- [ ] iPad layout: the glass system was laid out for phone widths, and the app
-      builds as a native iPad app (`TARGETED_DEVICE_FAMILY = "1,2"`) — the
-      action sheet and WebView chrome stretch
 - [ ] On-device VoiceOver audit of Timeline chip drag-reorder
 - [ ] Pin the Timeline chip row (needs a sliver refactor)
+- [ ] Real-inbox tuning rounds — the last untested claim in the product. Every
+      extractor guard so far was written against fixtures and reasoning; only a
+      real mailbox says which ones are wrong
 
 ## Pay-worthy arc (added 2026-08-04)
 
@@ -73,18 +82,21 @@ on-device, zero server cost per user (~100% margin, real privacy story).
 
 **Phase A — Truth (1–2 weeks, blocks everything).** First real-inbox sync +
 2–3 extractor tuning rounds from real misses. Fixtures prove nothing to a
-paying user. Real-inbox hardening: pagination past 25/query, quota backoff.
+paying user. Real-inbox hardening — pagination past 25/query and quota backoff —
+**done 2026-08-05** (`8396410`); the tuning rounds are still outstanding and are
+now the oldest unmet dependency in the plan.
 
 **Phase B — the pay trigger: Money intelligence.**
-- [ ] Price-hike detection — renewal amount changed vs snapshot history
-      ("Netflix went ₹649 → ₹699"). Killer feature; data already stored.
+- [x] Price-hike detection — done 2026-08-05 (`2a63e61`). Runs pre-merge, since
+      merge collapses subscriptions by service and destroys the old amount.
 - [ ] Unused-subscription heuristic — paying but no usage signals in mail
-- [ ] "Found savings" counter — running total NoMail surfaced; the number
-      that justifies the subscription price on sight
+- [x] Money-drift counter — done 2026-08-05. Shipped as "±₹X/mo vs before · N
+      price changes caught" rather than "found savings": the app can prove a
+      price moved, not that the user cancelled anything, and inventing the
+      stronger claim would cost the trust the number depends on.
 - [ ] Annual spend report (shareable)
-- [ ] Proactive notifications: renewal T-2d, bill due T-1d, return window
-      closing T-1d — value delivered without opening the app (local
-      notifications; works on free team today)
+- [x] Proactive notifications — done 2026-08-05 (`d2d1a8a`, wired `2a63e61`):
+      renewal T-2d, bill T-1d, return window T-1d.
 
 **Phase C — Packaging.**
 - [ ] Free/Pro split: free = 1 account + basic insights; Pro = multi-account,
