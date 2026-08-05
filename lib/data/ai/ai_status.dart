@@ -25,6 +25,7 @@
 library;
 
 import '../../core/ai_key.dart';
+import '../../domain/scan_cost.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 
@@ -166,6 +167,7 @@ class AiStatusService {
 
   static const _keyEndpoint = 'https://openrouter.ai/api/v1/key';
   static const _chatEndpoint = 'https://openrouter.ai/api/v1/chat/completions';
+  static const _modelsEndpoint = 'https://openrouter.ai/api/v1/models';
 
   /// Kept in sync with [OpenRouterAi] so Settings never reports a different
   /// model than the one actually used for analysis.
@@ -237,6 +239,42 @@ class AiStatusService {
     final override = _env('OPENROUTER_MODEL')?.trim();
     return (override == null || override.isEmpty) ? _defaultModel : override;
   }
+
+  /// Live per-token pricing for [slug] (defaults to the configured model), or
+  /// null when it can't be determined.
+  ///
+  /// Read from OpenRouter's own catalog rather than a table shipped in the app:
+  /// a price list baked into a build goes stale silently, and the screen this
+  /// feeds exists to be trusted. Null is a first-class answer — the estimate
+  /// then shows a scope with no money attached.
+  ///
+  /// Cached for the process lifetime; prices don't move within a session and
+  /// the payload is large.
+  Future<ModelPricing?> fetchPricing([String? slug]) async {
+    final target = slug ?? model;
+    if (_pricingCache.containsKey(target)) return _pricingCache[target];
+    try {
+      // No auth header: the catalog is public, and this way a user without a
+      // working key still sees what a scan would cost before committing.
+      final response = await _dio.get(_modelsEndpoint);
+      final data = (response.data is Map) ? (response.data as Map)['data'] : null;
+      if (data is! List) return null;
+      for (final entry in data) {
+        if (entry is! Map || entry['id'] != target) continue;
+        final pricing = ModelPricing.fromJson(entry['pricing']);
+        _pricingCache[target] = pricing;
+        return pricing;
+      }
+      // Model not in the catalog: cache the miss so a mistyped
+      // OPENROUTER_MODEL doesn't re-download the list on every visit.
+      _pricingCache[target] = null;
+      return null;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  final Map<String, ModelPricing?> _pricingCache = {};
 
   /// Current spend on the key, or null if it could not be determined.
   ///

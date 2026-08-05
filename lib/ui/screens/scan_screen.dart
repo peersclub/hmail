@@ -10,17 +10,42 @@ import 'package:flutter/cupertino.dart';
 import 'package:provider/provider.dart';
 
 import '../../core/palette.dart';
+import '../../domain/scan_cost.dart';
 import '../../domain/scan_settings.dart';
 import '../../state/app_controller.dart';
 import '../glass/glass.dart';
 
-class ScanScreen extends StatelessWidget {
+class ScanScreen extends StatefulWidget {
   const ScanScreen({super.key});
+
+  @override
+  State<ScanScreen> createState() => _ScanScreenState();
+}
+
+class _ScanScreenState extends State<ScanScreen> {
+  /// Null until the catalog answers, and permanently null when it can't be
+  /// reached — the estimate then shows scope without a price rather than a
+  /// made-up one.
+  ModelPricing? _pricing;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadPricing();
+  }
+
+  Future<void> _loadPricing() async {
+    final app = context.read<AppController>();
+    final pricing = await app.aiStatus.fetchPricing(app.settings.aiModel);
+    if (!mounted) return;
+    setState(() => _pricing = pricing);
+  }
 
   @override
   Widget build(BuildContext context) {
     final app = context.watch<AppController>();
     final settings = app.settings;
+    final estimate = estimateScanCost(settings: settings, pricing: _pricing);
 
     Future<void> update(ScanSettings next) => app.updateSettings(next);
 
@@ -68,6 +93,30 @@ class ScanScreen extends StatelessWidget {
                           color: Palette.secondaryLabel(context),
                         ),
                       ),
+                      // The money line only appears once there is something
+                      // true to say: with AI off there is no cost, and with
+                      // pricing unreachable there is no number.
+                      if (settings.aiEnabled && estimate.hasPrice) ...[
+                        const SizedBox(height: 10),
+                        Text(
+                          estimate.priceLine!,
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            fontSize: 13,
+                            color: Palette.secondaryLabel(context),
+                          ),
+                        ),
+                      ] else if (!settings.aiEnabled) ...[
+                        const SizedBox(height: 10),
+                        Text(
+                          'AI is off — scans cost nothing',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            fontSize: 13,
+                            color: Palette.secondaryLabel(context),
+                          ),
+                        ),
+                      ],
                     ],
                   ),
                 ),
