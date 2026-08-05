@@ -3,13 +3,14 @@ import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../domain/models.dart';
+import '../../domain/price_watch.dart';
 
 /// Local-first persistence: the last snapshot renders instantly on launch;
 /// sync refreshes it in place.
 class InsightStore {
   // Bump when extraction logic changes materially — forces a clean re-extract
   // instead of merging against stale results.
-  static const _key = 'insight_snapshot_v8';
+  static const _key = 'insight_snapshot_v9';
 
   Future<InsightSnapshot?> load() async {
     final prefs = await SharedPreferences.getInstance();
@@ -72,6 +73,12 @@ class InsightStore {
           (p) => p.lastSeen),
       returns: mergeBy(previous.returns, fresh.returns, (r) => r.dedupeKey,
           (r) => r.lastSeen),
+      // Price changes have no `lastSeen` (they are derived, not extracted) and
+      // expire on their own clock, so they get their own merge. Doing it here
+      // rather than at the call site means no caller can accidentally drop the
+      // history the detector depends on.
+      priceChanges:
+          mergePriceChanges(previous.priceChanges, fresh.priceChanges),
     );
   }
 }

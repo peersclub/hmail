@@ -239,3 +239,39 @@ class DemoMailSource implements MailSource {
     ];
   }
 }
+
+/// The snapshot demo mode pretends to have synced last month.
+///
+/// Price-hike detection is a diff between two syncs, so with no history there
+/// is nothing to detect and the feature would be invisible in demo mode. Rather
+/// than hand the UI a canned [PriceChange], this supplies a plausible earlier
+/// snapshot and lets the real detector find the move — demo mode keeps
+/// exercising production code, which is the whole point of it.
+///
+/// Netflix at ₹599 against the fixture email's ₹649 is a real ₹50/mo rise;
+/// Spotify is carried at its current price so the detector also has a
+/// no-change case to stay quiet about.
+InsightSnapshot demoHistory() {
+  final lastMonth = DateTime.now().subtract(const Duration(days: 32));
+  return InsightSnapshot(
+    subscriptions: [
+      Subscription(
+        service: 'Netflix',
+        amount: 599,
+        currency: 'INR',
+        cadence: Cadence.monthly,
+        lastSeen: lastMonth,
+        sourceEmailId: 'demo-netflix-last-month',
+      ),
+      Subscription(
+        service: 'Spotify',
+        amount: 119,
+        currency: 'INR',
+        cadence: Cadence.monthly,
+        lastSeen: lastMonth,
+        sourceEmailId: 'demo-spotify-last-month',
+      ),
+    ],
+    lastSyncedAt: lastMonth,
+  );
+}

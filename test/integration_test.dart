@@ -26,6 +26,16 @@ void main() {
         child: CupertinoApp(home: child),
       );
 
+  /// Money has more sections than a phone-sized test surface can build, and a
+  /// ListView only builds what's near the viewport — so a row further down
+  /// simply isn't in the tree to be found. A tall surface builds everything
+  /// and keeps these tests about actions rather than scroll mechanics.
+  void useTallSurface(WidgetTester tester) {
+    tester.view.physicalSize = const Size(1200, 4000);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+  }
+
   /// Rows live far down a scroll view; a raw tap() would miss the hit target.
   Future<void> tapRow(WidgetTester tester, Finder finder) async {
     await tester.ensureVisible(finder);
@@ -37,9 +47,21 @@ void main() {
     await tester.pumpAndSettle();
   }
 
+  /// A row inside one named section. Netflix appears twice on Money — once as
+  /// a subscription, once as a price change — so a bare text finder is
+  /// ambiguous and the section is what disambiguates it.
+  Finder rowInSection(String section, String title) => find.descendant(
+        of: find.ancestor(
+          of: find.text(section.toUpperCase()),
+          matching: find.byType(GlassSection),
+        ),
+        matching: find.widgetWithText(GlassRow, title),
+      );
+
   group('demo pipeline surfaces actionable insights', () {
     testWidgets('bill row opens an action sheet with a pay option',
         (tester) async {
+      useTallSurface(tester);
       final controller = AppController();
       await controller.enterDemo();
       await tester.pumpWidget(wrap(controller, const MoneyScreen()));
@@ -54,15 +76,50 @@ void main() {
     });
 
     testWidgets('subscription row offers its manage page', (tester) async {
+      useTallSurface(tester);
       final controller = AppController();
       await controller.enterDemo();
       await tester.pumpWidget(wrap(controller, const MoneyScreen()));
       await tester.pump(const Duration(milliseconds: 900));
 
-      // Target the row, not the share-bar legend that shares the label.
-      await tapRow(tester, find.widgetWithText(GlassRow, 'Netflix'));
+      await tapRow(tester, rowInSection('Subscriptions', 'Netflix'));
 
       expect(find.text('Manage plan'), findsOneWidget);
+    });
+
+    testWidgets('a price hike surfaces on Money and offers a plan review',
+        (tester) async {
+      useTallSurface(tester);
+      final controller = AppController();
+      await controller.enterDemo();
+      await tester.pumpWidget(wrap(controller, const MoneyScreen()));
+      await tester.pump(const Duration(milliseconds: 900));
+
+      // Demo history carries Netflix at ₹599 against the fixture's ₹649, so
+      // the real detector — not a canned fixture — produced this row.
+      final change = controller.snapshot.activePriceChanges.single;
+      expect(change.service, 'Netflix');
+      expect(change.monthlyDelta, 50);
+
+      expect(find.text('PRICE CHANGES'), findsOneWidget);
+      await tapRow(tester, rowInSection('Price changes', 'Netflix'));
+
+      // A rise leads with "Review plan"; the plain subscription row says
+      // "Manage plan". Different framing for a different question.
+      expect(find.text('Review plan'), findsOneWidget);
+    });
+
+    testWidgets('the hero reports what the price watch caught', (tester) async {
+      useTallSurface(tester);
+      final controller = AppController();
+      await controller.enterDemo();
+      await tester.pumpWidget(wrap(controller, const MoneyScreen()));
+      await tester.pumpAndSettle();
+
+      expect(
+        find.textContaining('1 price change caught'),
+        findsOneWidget,
+      );
     });
 
     testWidgets('demo meeting invite appears on Today with a join action',

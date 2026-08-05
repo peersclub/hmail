@@ -33,6 +33,32 @@ List<Insight> snapshotToInsights(InsightSnapshot s) {
     ));
   }
 
+  // Price moves outrank every scheduled money item (weight 85 sits above an
+  // upcoming bill at 70, below an overdue one at 90): a hike is a decision the
+  // user does not know they need to make, where a bill is one they already do.
+  // Timeless on purpose — the anchor is the renewal it affects, and that
+  // subscription already carries it.
+  for (final c in s.activePriceChanges) {
+    final up = c.isIncrease;
+    out.add(Insight(
+      id: 'price:${c.dedupeKey}',
+      domain: InsightDomain.money,
+      title: c.service,
+      subtitle: '${up ? 'Price up' : 'Price down'} · '
+          '${formatMoney(c.oldAmount, c.currency)} → '
+          '${formatMoney(c.newAmount, c.currency)}',
+      trailing: '${up ? '+' : '−'}'
+          '${formatMoney(c.monthlyDelta.abs(), c.currency)}',
+      caption: '/mo',
+      icon: up
+          ? CupertinoIcons.arrow_up_right_circle_fill
+          : CupertinoIcons.arrow_down_right_circle_fill,
+      brandKey: c.service,
+      weight: 85,
+      actions: actionsForPriceChange(c, s.subscriptions),
+    ));
+  }
+
   for (final sub in s.subscriptions) {
     out.add(Insight(
       id: 'sub:${sub.sourceEmailId}',

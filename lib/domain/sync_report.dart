@@ -153,6 +153,11 @@ class SyncReport {
   final int typesLearned;
   final List<String> learnedLabels;
 
+  /// Subscription prices that moved since the last sync. Not an extraction —
+  /// it's derived by diffing two snapshots — so it stays out of
+  /// [totalInsights], which counts what the mail itself yielded.
+  final int priceChangesFound;
+
   /// False when no AI is configured, or the key is missing — the app is fully
   /// usable without it and the report should say so rather than imply the
   /// model looked and found nothing.
@@ -182,6 +187,7 @@ class SyncReport {
     this.knowledgeApplied = 0,
     this.typesLearned = 0,
     this.learnedLabels = const [],
+    this.priceChangesFound = 0,
     this.aiRan = false,
     this.aiRejected = 0,
     this.aiRenamed = 0,
@@ -243,6 +249,10 @@ class SyncReport {
     if (deliveriesFound > 0)
       '$deliveriesFound ${_plural(deliveriesFound, 'package')}',
     if (eventsFound > 0) '$eventsFound ${_plural(eventsFound, 'meeting')}',
+    // Last, and phrased as a change rather than a find: it is the one line
+    // here the mail did not contain — the app worked it out.
+    if (priceChangesFound > 0)
+      '$priceChangesFound price ${_plural(priceChangesFound, 'change')}',
   ];
 
   SyncReport copyWith({
@@ -257,6 +267,7 @@ class SyncReport {
     int? knowledgeApplied,
     int? typesLearned,
     List<String>? learnedLabels,
+    int? priceChangesFound,
     bool? aiRan,
     int? aiRejected,
     int? aiRenamed,
@@ -276,6 +287,7 @@ class SyncReport {
     knowledgeApplied: knowledgeApplied ?? this.knowledgeApplied,
     typesLearned: typesLearned ?? this.typesLearned,
     learnedLabels: learnedLabels ?? this.learnedLabels,
+    priceChangesFound: priceChangesFound ?? this.priceChangesFound,
     aiRan: aiRan ?? this.aiRan,
     aiRejected: aiRejected ?? this.aiRejected,
     aiRenamed: aiRenamed ?? this.aiRenamed,

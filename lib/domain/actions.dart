@@ -173,6 +173,37 @@ List<InsightAction> actionsForSubscription(Subscription subscription) {
   return actions;
 }
 
+/// Actions for a detected price change. The point of surfacing a hike is that
+/// the user can act on it, and the only useful act is cancelling or downgrading
+/// — so this leads with the manage link.
+///
+/// The change itself carries no URL (it is derived from two snapshots, not from
+/// one email), so the link is borrowed from the live subscription of the same
+/// name in [subscriptions]; the static registry is the fallback, and "Open
+/// email" is the floor as everywhere else.
+List<InsightAction> actionsForPriceChange(
+  PriceChange change,
+  List<Subscription> subscriptions,
+) {
+  final actions = <InsightAction>[];
+
+  final key = change.service.toLowerCase();
+  final live = subscriptions.where((s) => s.dedupeKey == key);
+  final manageUrl = (live.isEmpty ? null : live.first.manageUrl) ??
+      _manageUrls[change.service];
+  final manageUri = manageUrl == null ? null : Uri.tryParse(manageUrl);
+  if (manageUri != null) {
+    actions.add(InsightAction(
+      label: change.isIncrease ? 'Review plan' : 'Manage plan',
+      uri: manageUri,
+      kind: ActionKind.manage,
+    ));
+  }
+
+  actions.add(openEmailAction(change.sourceEmailId));
+  return actions;
+}
+
 /// Google Calendar day view for [date] — universal link, opens the app.
 Uri calendarDayUri(DateTime date) => Uri.parse(
     'https://calendar.google.com/calendar/r/day/${date.year}/${date.month}/${date.day}');

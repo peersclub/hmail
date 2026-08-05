@@ -7,6 +7,7 @@ import '../../core/brand_icons.dart';
 import '../../core/palette.dart';
 import '../../domain/actions.dart';
 import '../../domain/models.dart';
+import '../../domain/price_watch.dart';
 import '../../state/app_controller.dart';
 import '../action_sheet.dart';
 import '../format.dart';
@@ -37,6 +38,7 @@ class MoneyScreen extends StatelessWidget {
     final allSubs = snapshot.subscriptions.toList()
       ..sort((a, b) => b.monthlyAmount.compareTo(a.monthlyAmount));
     final bills = snapshot.unpaidUpcoming;
+    final priceChanges = snapshot.activePriceChanges;
     final isEmpty = allSubs.isEmpty && bills.isEmpty;
 
     return ListView(
@@ -77,8 +79,54 @@ class MoneyScreen extends StatelessWidget {
               subscriptions: dominantSubs,
               monthlyTotal: monthlyTotal,
               otherCurrencies: otherCurrencies,
+              // Only the dominant currency's drift: the hero's big number is
+              // in that currency, so mixing others into the delta under it
+              // would make the two disagree.
+              monthlyDrift:
+                  priceDriftByCurrency(priceChanges)[currency] ?? 0,
+              changesWatched: priceChanges.length,
             ),
           ),
+          // Above subscriptions: a price that moved is news, a price that
+          // didn't is inventory.
+          if (priceChanges.isNotEmpty)
+            GlassSection(
+              label: 'Price changes',
+              children: [
+                for (final change in priceChanges)
+                  GlassRow(
+                    icon: BrandIcons.forName(change.service) ??
+                        (change.isIncrease
+                            ? CupertinoIcons.arrow_up_right_circle_fill
+                            : CupertinoIcons.arrow_down_right_circle_fill),
+                    title: change.service,
+                    subtitle:
+                        '${formatMoney(change.oldAmount, change.currency)} → '
+                        '${formatMoney(change.newAmount, change.currency)}'
+                        '${change.cadence == Cadence.yearly ? '/yr' : '/mo'}',
+                    trailing: '${change.isIncrease ? '+' : '−'}'
+                        '${formatMoney(change.monthlyDelta.abs(), change.currency)}',
+                    trailingCaption: '/mo',
+                    // Red only for rises. A price drop is the same event
+                    // mechanically and the opposite news.
+                    trailingCaptionColor: change.isIncrease
+                        ? Palette.destructive(context)
+                        : null,
+                    onTap: () => showInsightActions(
+                      context,
+                      title: change.service,
+                      message: [
+                        change.isIncrease ? 'Price went up' : 'Price came down',
+                        if (_attribution(context, change.sourceEmailId)
+                            case final String from)
+                          from,
+                      ].join(' · '),
+                      actions: actionsForPriceChange(
+                          change, snapshot.subscriptions),
+                    ),
+                  ),
+              ],
+            ),
           if (allSubs.isNotEmpty)
             GlassSection(
               label: 'Subscriptions',
@@ -155,11 +203,19 @@ class _Hero extends StatelessWidget {
   final double monthlyTotal;
   final Map<String, double> otherCurrencies;
 
+  /// Signed monthly total of the price moves NoMail caught, in [currency].
+  final double monthlyDrift;
+
+  /// How many moves that total is made of.
+  final int changesWatched;
+
   const _Hero({
     required this.currency,
     required this.subscriptions,
     required this.monthlyTotal,
     required this.otherCurrencies,
+    this.monthlyDrift = 0,
+    this.changesWatched = 0,
   });
 
   @override
@@ -211,12 +267,84 @@ class _Hero extends StatelessWidget {
               color: Palette.secondaryLabel(context),
             ),
           ),
+          if (changesWatched > 0) ...[
+            const SizedBox(height: 10),
+            _DriftLine(
+              currency: currency,
+              monthlyDrift: monthlyDrift,
+              changesWatched: changesWatched,
+            ),
+          ],
           if (subscriptions.isNotEmpty && monthlyTotal > 0) ...[
             const SizedBox(height: 18),
             _ShareBar(subscriptions: subscriptions, total: monthlyTotal),
           ],
         ],
       ),
+    );
+  }
+}
+
+/// The number that justifies the app: what the recurring total has quietly
+/// done since NoMail started watching.
+///
+/// Deliberately not called "savings". The app can prove a price moved; it
+/// cannot prove the user cancelled anything, and a fabricated savings figure
+/// would poison the one surface whose whole value is being trustworthy.
+class _DriftLine extends StatelessWidget {
+  final String currency;
+  final double monthlyDrift;
+  final int changesWatched;
+
+  const _DriftLine({
+    required this.currency,
+    required this.monthlyDrift,
+    required this.changesWatched,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final changes =
+        '$changesWatched price ${changesWatched == 1 ? 'change' : 'changes'} caught';
+    // A net zero with real changes behind it means rises and drops cancelled
+    // out — reporting "+₹0" would read like a bug, so it just says what it
+    // found.
+    final rounded = monthlyDrift.abs() < 0.005;
+    final up = monthlyDrift > 0;
+    final label = rounded
+        ? changes
+        : '${up ? '+' : '−'}${formatMoney(monthlyDrift.abs(), currency)}/mo '
+            'vs before · $changes';
+
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        Icon(
+          rounded
+              ? CupertinoIcons.eye
+              : (up
+                  ? CupertinoIcons.arrow_up_right
+                  : CupertinoIcons.arrow_down_right),
+          size: 13,
+          color: rounded || !up
+              ? Palette.secondaryLabel(context)
+              : Palette.destructive(context),
+        ),
+        const SizedBox(width: 5),
+        Flexible(
+          child: Text(
+            label,
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              fontSize: 13,
+              color: rounded || !up
+                  ? Palette.secondaryLabel(context)
+                  : Palette.destructive(context),
+            ),
+          ),
+        ),
+      ],
     );
   }
 }

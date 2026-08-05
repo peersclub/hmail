@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import '../core/action_launcher.dart';
 import '../core/ai_key.dart';
 import '../core/notification_service.dart';
+import '../core/upcoming_alerts.dart';
 import '../ui/action_sheet.dart' show installedApps;
 import '../data/ai/ai_status.dart';
 import '../data/ai/insight_ai.dart';
@@ -594,7 +595,10 @@ class AppController extends ChangeNotifier {
     _phase = AppPhase.syncing;
     notifyListeners();
 
-    _snapshot = await _engine(DemoMailSource(), ai: const NoAi()).run();
+    // A fabricated "last month" snapshot so the price-hike detector has two
+    // syncs to diff — see [demoHistory].
+    _snapshot = await _engine(DemoMailSource(), ai: const NoAi())
+        .run(previous: demoHistory());
     _afterSnapshotUpdate();
     _phase = AppPhase.ready;
     notifyListeners();
@@ -606,7 +610,10 @@ class AppController extends ChangeNotifier {
 
   Future<void> sync() async {
     if (_isDemo) {
-      _snapshot = await _engine(DemoMailSource(), ai: const NoAi()).run();
+      // Re-syncing demo keeps the same fabricated history, so the price change
+      // stays put instead of flickering away on a pull-to-refresh.
+      _snapshot = await _engine(DemoMailSource(), ai: const NoAi())
+          .run(previous: demoHistory());
       _afterSnapshotUpdate();
       notifyListeners();
       return;
@@ -677,6 +684,13 @@ class AppController extends ChangeNotifier {
       // Fire-and-forget: scheduling silently no-ops without permission.
       _notifications.scheduleDailyBrief(brief, hour: _settings.briefHour);
     }
+    // Proactive alerts are rebuilt from scratch every sync rather than
+    // incrementally maintained: the builder is pure and the scheduler cancels
+    // its own namespace first, so a renewal that moved or a bill that got paid
+    // simply stops being scheduled. Fire-and-forget for the same reason as the
+    // brief — a device that refused notifications must still sync.
+    unawaited(_notifications
+        .syncUpcomingAlerts(buildUpcomingAlerts(_snapshot, DateTime.now())));
   }
 
   /// Notification taps: action buttons carry `action:<id>|<uri>` (the uri is

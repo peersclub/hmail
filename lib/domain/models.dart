@@ -684,6 +684,18 @@ class PriceChange {
   String get dedupeKey =>
       '${service.toLowerCase()}|${newAmount.toStringAsFixed(2)}';
 
+  /// Adopts the AI audit's better brand name, same as [Subscription.withService]
+  /// — a change on "NETFLIX.COM BILLING" should read "Netflix" too.
+  PriceChange withService(String name) => PriceChange(
+        service: name,
+        oldAmount: oldAmount,
+        newAmount: newAmount,
+        currency: currency,
+        cadence: cadence,
+        detectedAt: detectedAt,
+        sourceEmailId: sourceEmailId,
+      );
+
   Map<String, dynamic> toJson() => {
         'service': service,
         'oldAmount': oldAmount,

@@ -6,6 +6,7 @@ import '../../domain/scan_settings.dart';
 import '../../domain/sync_report.dart';
 import '../ai/insight_ai.dart';
 import '../ai/knowledge_learner.dart';
+import '../../domain/price_watch.dart';
 import '../extractors/extractors.dart';
 import '../mail/mail_source.dart';
 import '../store/insight_store.dart';
@@ -61,8 +62,22 @@ class SyncEngine {
     }
     final learned = mapKnowledge(knowledgeMatches);
 
+    final freshSubscriptions = [
+      ...extracted.subscriptions,
+      ...learned.subscriptions,
+    ];
+
+    // Price watch runs on the *pre-merge* pair: merge collapses subscriptions
+    // by service, so a moment later the old amount no longer exists anywhere.
+    // The detected changes ride into the snapshot and `store.merge` folds them
+    // into the stored history.
+    final priceChanges = detectPriceChanges(
+      previous: previous?.subscriptions ?? const [],
+      fresh: freshSubscriptions,
+    );
+
     var snapshot = InsightSnapshot(
-      subscriptions: [...extracted.subscriptions, ...learned.subscriptions],
+      subscriptions: freshSubscriptions,
       bills: [...extracted.bills, ...learned.bills],
       deliveries: [...extracted.deliveries, ...learned.deliveries],
       events: [...extracted.events, ...learned.events],
@@ -70,6 +85,7 @@ class SyncEngine {
       payments: extracted.payments,
       returns: extracted.returns,
       feed: extracted.feed,
+      priceChanges: priceChanges,
       lastSyncedAt: DateTime.now(),
       emailsScanned: emails.length,
     );
@@ -84,6 +100,7 @@ class SyncEngine {
       eventsFound: extracted.events.length,
       unclaimedCount: stillUnclaimed.length,
       knowledgeApplied: knowledgeMatches.length,
+      priceChangesFound: priceChanges.length,
       stage: SyncStage.auditing,
     );
 
@@ -176,6 +193,10 @@ class SyncEngine {
       payments: extracted.payments,
       returns: extracted.returns,
       feed: extracted.feed,
+      priceChanges: detectPriceChanges(
+        previous: previous?.subscriptions ?? const [],
+        fresh: extracted.subscriptions,
+      ),
       lastSyncedAt: DateTime.now(),
       emailsScanned: emails.length,
     );
@@ -257,6 +278,17 @@ InsightSnapshot applyVerdicts(
     returns: [
       for (final r in snapshot.returns)
         if (kept(r.sourceEmailId)) r,
+    ],
+    // A price change is only as real as the subscription it was measured on:
+    // if the audit threw that email out, the "hike" was a misread amount, and
+    // leaving it behind would be the loudest wrong insight in the app.
+    priceChanges: [
+      for (final c in snapshot.priceChanges)
+        if (kept(c.sourceEmailId))
+          switch (newName(c.sourceEmailId)) {
+            final String name => c.withService(name),
+            null => c,
+          },
     ],
   );
 }
