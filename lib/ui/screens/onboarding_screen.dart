@@ -1,7 +1,37 @@
-/// Pre-auth story — three full-bleed scenes, auth on the last page.
+/// First run: three scenes, then sign in.
 ///
-/// Swipe uses a soft parallax fade (not a hard clip). Progress and the footer
-/// track the continuous page offset so nothing jumps on settle.
+/// ## Why this was rebuilt rather than tuned
+///
+/// The previous carousel called `setState` from a scroll listener, so during a
+/// swipe the whole subtree rebuilt 60–120 times a second: the backdrop and its
+/// two radial gradients, every live page, and every page body. On top of that,
+/// each page was wrapped in `Opacity` — which forces a `saveLayer` — over
+/// content containing frosted fills. A `saveLayer` around blurred content is
+/// the most expensive thing you can put on a moving layer, because the GPU
+/// re-composites an offscreen buffer per page per frame.
+///
+/// No curve tuning fixes that. Smoothness had to be structural:
+///
+///  1. **Nothing rebuilds on scroll.** The swipe is read through
+///     `AnimatedBuilder(animation: _pages)` — a `PageController` is a
+///     `Listenable` — and every such builder is handed its subtree via the
+///     `child:` parameter, which Flutter passes through untouched. So a drag
+///     re-runs a handful of `Transform`s and repaints two `CustomPaint`s, and
+///     rebuilds no page content at all.
+///  2. **`RepaintBoundary` per page**, so painting the page you are dragging in
+///     never repaints the one you are dragging out.
+///  3. **Scene bodies rebuild once per settle**, driven by `_settled` — not by
+///     the continuous offset.
+///  4. **`FadeTransition`/`SlideTransition` over `Opacity`/`Transform`** inside
+///     scenes: they animate the layer instead of rebuilding the widget.
+///  5. **No `BackdropFilter` in a moving subtree.** See `onboarding_scenes.dart`.
+///
+/// ## Haptics
+///
+/// Three moments, deliberately few — a haptic on everything means nothing.
+/// `selectionClick` on page settle (the lightest tick iOS has, matching a
+/// picker), `mediumImpact` once when scene one resolves noise into insights
+/// (the app's thesis landing), and `lightImpact` on the buttons that commit.
 library;
 
 import 'package:flutter/cupertino.dart';
@@ -11,7 +41,7 @@ import 'package:provider/provider.dart';
 import '../../core/palette.dart';
 import '../../state/app_controller.dart';
 import '../glass/glass.dart';
-import '../onboarding/onboarding_pages.dart';
+import '../onboarding/onboarding_scenes.dart';
 import '../widgets/journey_states.dart';
 
 class OnboardingScreen extends StatefulWidget {
@@ -22,48 +52,52 @@ class OnboardingScreen extends StatefulWidget {
 }
 
 class _OnboardingScreenState extends State<OnboardingScreen> {
-  late final PageController _controller;
-  final _pages = onboardingPages();
+  final PageController _pages = PageController();
 
-  /// Continuous page position (0.0 … n-1). Drives progress, parallax, footer.
-  double _page = 0;
+  /// The settled page. Changes once per swipe, and is the *only* thing that
+  /// rebuilds scene content.
   int _settled = 0;
 
-  @override
-  void initState() {
-    super.initState();
-    _controller = PageController();
-    _controller.addListener(_onScroll);
-  }
-
-  void _onScroll() {
-    if (!_controller.hasClients || !_controller.position.haveDimensions) {
-      return;
-    }
-    final next = _controller.page ?? _page;
-    if ((next - _page).abs() < 0.001) return;
-    setState(() => _page = next);
-  }
+  static const _sceneCount = 3;
 
   @override
   void dispose() {
-    _controller.removeListener(_onScroll);
-    _controller.dispose();
+    _pages.dispose();
     super.dispose();
+  }
+
+  /// Continuous offset, read on demand instead of stored in state.
+  ///
+  /// Before the first layout there are no dimensions to ask about, so this
+  /// falls back to the settled page rather than throwing or reporting zero.
+  double get _offset {
+    if (!_pages.hasClients || !_pages.position.haveDimensions) {
+      return _settled.toDouble();
+    }
+    return _pages.page ?? _settled.toDouble();
+  }
+
+  void _onSettled(int index) {
+    if (index == _settled) return;
+    HapticFeedback.selectionClick();
+    setState(() => _settled = index);
+  }
+
+  void _next() {
+    HapticFeedback.lightImpact();
+    _pages.animateToPage(
+      (_settled + 1).clamp(0, _sceneCount - 1),
+      // 520ms with a decelerating curve: long enough for the parallax to read
+      // as depth, short enough that a second tap never feels blocked.
+      duration: MediaQuery.disableAnimationsOf(context)
+          ? Duration.zero
+          : const Duration(milliseconds: 520),
+      curve: Curves.easeOutCubic,
+    );
   }
 
   Future<void> _skip() async {
     await context.read<AppController>().completeOnboarding();
-  }
-
-  void _next() {
-    final reduced = MediaQuery.disableAnimationsOf(context);
-    _controller.animateToPage(
-      _settled + 1,
-      duration:
-          reduced ? Duration.zero : const Duration(milliseconds: 480),
-      curve: Curves.easeOutCubic,
-    );
   }
 
   Future<void> _signIn() async {
@@ -80,23 +114,11 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     await app.enterDemo();
   }
 
-  void _onPageSettled(int i) {
-    if (i == _settled) return;
-    HapticFeedback.selectionClick();
-    setState(() {
-      _settled = i;
-      _page = i.toDouble();
-    });
-  }
-
   @override
   Widget build(BuildContext context) {
     final app = context.watch<AppController>();
-    final syncing = app.authenticating || app.phase == AppPhase.syncing;
-    final reduced = MediaQuery.disableAnimationsOf(context);
-    final last = _page >= _pages.length - 1.08;
-    // Progress fills smoothly as you drag, not only on snap.
-    final progress = ((_page + 1) / _pages.length).clamp(0.0, 1.0);
+    final busy = app.authenticating || app.phase == AppPhase.syncing;
+    final onLast = _settled == _sceneCount - 1;
 
     return CupertinoPageScaffold(
       backgroundColor: const Color(0x00000000),
@@ -105,90 +127,40 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
           child: SafeArea(
             child: Column(
               children: [
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(20, 8, 8, 0),
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: _ProgressRail(
-                          progress: progress,
-                          reduced: reduced,
-                        ),
-                      ),
-                      CupertinoButton(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 16, vertical: 8),
-                        onPressed: syncing ? null : _skip,
-                        child: Text(
-                          'Skip',
-                          style: TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w600,
-                            color: Palette.secondaryLabel(context),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
+                _Chrome(
+                  pages: _pages,
+                  settled: _settled,
+                  count: _sceneCount,
+                  onSkip: busy ? null : _skip,
                 ),
                 Expanded(
                   child: PageView.builder(
-                    controller: _controller,
-                    itemCount: _pages.length,
-                    // Soft overscroll + page snap — less "clunk" than default.
-                    physics: const BouncingScrollPhysics(
-                      parent: PageScrollPhysics(),
+                    controller: _pages,
+                    itemCount: _sceneCount,
+                    onPageChanged: _onSettled,
+                    // iOS-native feel: page snapping with rubber-band
+                    // overscroll at the ends.
+                    physics: const PageScrollPhysics()
+                        .applyTo(const BouncingScrollPhysics()),
+                    itemBuilder: (context, index) => RepaintBoundary(
+                      child: _Scene(
+                        index: index,
+                        pages: _pages,
+                        offsetOf: () => _offset,
+                        active: _settled == index,
+                      ),
                     ),
-                    onPageChanged: _onPageSettled,
-                    itemBuilder: (context, i) {
-                      return _ParallaxPage(
-                        index: i,
-                        page: _page,
-                        reduced: reduced,
-                        child: OnboardingPageBody(
-                          _pages[i],
-                          active: (i - _page).abs() < 0.45,
-                        ),
-                      );
-                    },
                   ),
                 ),
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(24, 4, 24, 16),
-                  child: AnimatedSwitcher(
-                    duration: reduced
-                        ? Duration.zero
-                        : const Duration(milliseconds: 320),
-                    switchInCurve: Curves.easeOutCubic,
-                    switchOutCurve: Curves.easeInCubic,
-                    transitionBuilder: (child, anim) {
-                      final slide = Tween<Offset>(
-                        begin: const Offset(0, 0.12),
-                        end: Offset.zero,
-                      ).animate(anim);
-                      return FadeTransition(
-                        opacity: anim,
-                        child: SlideTransition(position: slide, child: child),
-                      );
-                    },
-                    child: last
-                        ? KeyedSubtree(
-                            key: const ValueKey('auth'),
-                            child: _AuthBlock(
-                              syncing: syncing,
-                              error: app.error,
-                              isDemo: app.isDemo,
-                              onSignIn: _signIn,
-                              onDemo: _demo,
-                              onRetry: () =>
-                                  context.read<AppController>().signIn(),
-                            ),
-                          )
-                        : KeyedSubtree(
-                            key: const ValueKey('continue'),
-                            child: _ContinueButton(onPressed: _next),
-                          ),
-                  ),
+                _Footer(
+                  onLast: onLast,
+                  busy: busy,
+                  error: app.error,
+                  isDemo: app.isDemo,
+                  onContinue: _next,
+                  onSignIn: _signIn,
+                  onDemo: _demo,
+                  onRetry: () => context.read<AppController>().signIn(),
                 ),
               ],
             ),
@@ -199,12 +171,66 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   }
 }
 
-/// Continuous ink rail — width tracks drag, not just settled page.
-class _ProgressRail extends StatelessWidget {
-  final double progress;
-  final bool reduced;
+/// Progress rail and Skip.
+///
+/// The rail tracks the *continuous* offset, so it grows under the thumb during
+/// a drag instead of jumping when the page snaps — the single cheapest thing
+/// that makes a carousel feel connected to the finger.
+class _Chrome extends StatelessWidget {
+  final PageController pages;
+  final int settled;
+  final int count;
+  final VoidCallback? onSkip;
 
-  const _ProgressRail({required this.progress, required this.reduced});
+  const _Chrome({
+    required this.pages,
+    required this.settled,
+    required this.count,
+    required this.onSkip,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(24, 10, 10, 2),
+      child: Row(
+        children: [
+          Expanded(
+            child: AnimatedBuilder(
+              animation: pages,
+              builder: (context, _) {
+                final page = (pages.hasClients &&
+                        pages.position.haveDimensions)
+                    ? (pages.page ?? settled.toDouble())
+                    : settled.toDouble();
+                return _Rail(progress: ((page + 1) / count).clamp(0.0, 1.0));
+              },
+            ),
+          ),
+          const SizedBox(width: 12),
+          CupertinoButton(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+            onPressed: onSkip,
+            child: Text(
+              'Skip',
+              style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w600,
+                letterSpacing: -0.3,
+                color: Palette.secondaryLabel(context),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _Rail extends StatelessWidget {
+  final double progress;
+
+  const _Rail({required this.progress});
 
   @override
   Widget build(BuildContext context) {
@@ -216,6 +242,8 @@ class _ProgressRail extends StatelessWidget {
           fit: StackFit.expand,
           children: [
             ColoredBox(color: Palette.track(context)),
+            // FractionallySizedBox rather than an animated width: no layout
+            // pass, and it follows the drag exactly.
             FractionallySizedBox(
               alignment: Alignment.centerLeft,
               widthFactor: progress,
@@ -228,56 +256,169 @@ class _ProgressRail extends StatelessWidget {
   }
 }
 
-/// Soft fade + scale + lateral drift while the page is mid-swipe.
-class _ParallaxPage extends StatelessWidget {
+/// One page: an ambient backdrop that drifts, and the scene itself, both
+/// parallaxed off the swipe offset.
+///
+/// The scene widget is created once per settle and handed to `AnimatedBuilder`
+/// as `child`, so the drag moves it without rebuilding it.
+class _Scene extends StatelessWidget {
   final int index;
-  final double page;
-  final bool reduced;
-  final Widget child;
+  final PageController pages;
+  final double Function() offsetOf;
+  final bool active;
 
-  const _ParallaxPage({
+  const _Scene({
     required this.index,
-    required this.page,
-    required this.reduced,
-    required this.child,
+    required this.pages,
+    required this.offsetOf,
+    required this.active,
+  });
+
+  Widget _body() => switch (index) {
+        0 => InboxScene(active: active),
+        1 => PriceScene(active: active),
+        _ => DestinationScene(active: active),
+      };
+
+  @override
+  Widget build(BuildContext context) {
+    final reduced = MediaQuery.disableAnimationsOf(context);
+    final content = Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 26),
+      child: _body(),
+    );
+
+    if (reduced) return content;
+
+    return AnimatedBuilder(
+      animation: pages,
+      child: content,
+      builder: (context, child) {
+        final delta = offsetOf() - index;
+        final away = delta.abs().clamp(0.0, 1.0);
+        // Ease the falloff so a page leaving dissolves rather than snapping to
+        // transparent halfway through the gesture.
+        final falloff = Curves.easeOut.transform(away);
+
+        return Stack(
+          children: [
+            // Backdrop drifts at a third of the content's rate: the difference
+            // between the two speeds is what the eye reads as depth.
+            Positioned.fill(
+              child: IgnorePointer(
+                child: SceneBackdrop(phase: delta * 0.34, seed: 7 + index * 31),
+              ),
+            ),
+            Positioned.fill(
+              child: Opacity(
+                // Exactly 1.0 at rest, so Flutter skips the saveLayer entirely
+                // and a still page costs nothing to composite.
+                opacity: 1.0 - falloff * 0.6,
+                child: Transform.translate(
+                  offset: Offset(delta * -34, falloff * 10),
+                  child: Transform.scale(
+                    scale: 1.0 - falloff * 0.05,
+                    child: child,
+                  ),
+                ),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+}
+
+/// Continue on the first two scenes; the auth block on the last.
+///
+/// Cross-fades with a slight lift so the change of purpose is felt rather than
+/// noticed — a hard swap here reads as a bug.
+class _Footer extends StatelessWidget {
+  final bool onLast;
+  final bool busy;
+  final String? error;
+  final bool isDemo;
+  final VoidCallback onContinue;
+  final VoidCallback onSignIn;
+  final VoidCallback onDemo;
+  final VoidCallback onRetry;
+
+  const _Footer({
+    required this.onLast,
+    required this.busy,
+    required this.error,
+    required this.isDemo,
+    required this.onContinue,
+    required this.onSignIn,
+    required this.onDemo,
+    required this.onRetry,
   });
 
   @override
   Widget build(BuildContext context) {
-    if (reduced) return child;
-
-    final delta = page - index;
-    final abs = delta.abs().clamp(0.0, 1.0);
-    // Ease the falloff so the leaving page dissolves instead of clipping.
-    final falloff = Curves.easeOut.transform(abs);
-    final opacity = (1.0 - falloff * 0.55).clamp(0.0, 1.0);
-    final scale = (1.0 - falloff * 0.045).clamp(0.94, 1.0);
-    final dx = delta * -28;
-
-    return Opacity(
-      opacity: opacity,
-      child: Transform.translate(
-        offset: Offset(dx, 8 * falloff),
-        child: Transform.scale(
-          scale: scale,
-          alignment: Alignment.center,
-          child: child,
+    final reduced = MediaQuery.disableAnimationsOf(context);
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(26, 6, 26, 14),
+      child: AnimatedSize(
+        duration: reduced ? Duration.zero : const Duration(milliseconds: 300),
+        curve: Curves.easeOutCubic,
+        alignment: Alignment.topCenter,
+        child: AnimatedSwitcher(
+          duration: reduced ? Duration.zero : const Duration(milliseconds: 300),
+          switchInCurve: Curves.easeOutCubic,
+          switchOutCurve: Curves.easeInCubic,
+          transitionBuilder: (child, animation) => FadeTransition(
+            opacity: animation,
+            child: SlideTransition(
+              position: Tween<Offset>(
+                begin: const Offset(0, 0.14),
+                end: Offset.zero,
+              ).animate(animation),
+              child: child,
+            ),
+          ),
+          child: onLast
+              ? _Auth(
+                  key: const ValueKey('auth'),
+                  busy: busy,
+                  error: error,
+                  isDemo: isDemo,
+                  onSignIn: onSignIn,
+                  onDemo: onDemo,
+                  onRetry: onRetry,
+                )
+              : _PressableButton(
+                  key: const ValueKey('continue'),
+                  label: 'Continue',
+                  onPressed: onContinue,
+                ),
         ),
       ),
     );
   }
 }
 
-class _ContinueButton extends StatefulWidget {
+/// An [AccentButton] that dips 2.5% under the thumb.
+///
+/// `AnimatedScale` rather than a controller: the press is a one-shot 110ms
+/// change, and HIG asks for feedback inside 100ms — a tween that starts on the
+/// same frame as the touch is the cheapest way to hit that.
+class _PressableButton extends StatefulWidget {
+  final String label;
   final VoidCallback onPressed;
 
-  const _ContinueButton({required this.onPressed});
+  const _PressableButton({
+    super.key,
+    required this.label,
+    required this.onPressed,
+  });
 
   @override
-  State<_ContinueButton> createState() => _ContinueButtonState();
+  State<_PressableButton> createState() => _PressableButtonState();
 }
 
-class _ContinueButtonState extends State<_ContinueButton> {
+class _PressableButtonState extends State<_PressableButton> {
   bool _down = false;
 
   @override
@@ -290,26 +431,25 @@ class _ContinueButtonState extends State<_ContinueButton> {
       onPointerCancel: (_) => setState(() => _down = false),
       child: AnimatedScale(
         scale: _down ? 0.975 : 1,
-        duration: reduced
-            ? Duration.zero
-            : const Duration(milliseconds: 120),
+        duration: reduced ? Duration.zero : const Duration(milliseconds: 110),
         curve: Curves.easeOut,
-        child: AccentButton('Continue', onPressed: widget.onPressed),
+        child: AccentButton(widget.label, onPressed: widget.onPressed),
       ),
     );
   }
 }
 
-class _AuthBlock extends StatelessWidget {
-  final bool syncing;
+class _Auth extends StatelessWidget {
+  final bool busy;
   final String? error;
   final bool isDemo;
   final VoidCallback onSignIn;
   final VoidCallback onDemo;
   final VoidCallback onRetry;
 
-  const _AuthBlock({
-    required this.syncing,
+  const _Auth({
+    super.key,
+    required this.busy,
     required this.error,
     required this.isDemo,
     required this.onSignIn,
@@ -322,16 +462,18 @@ class _AuthBlock extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        if (syncing)
+        if (busy)
           Padding(
             padding: const EdgeInsets.only(bottom: 12),
             child: BusyLine(
-                isDemo ? 'Preparing sample data…' : 'Connecting to Google…'),
+              isDemo ? 'Preparing sample data…' : 'Connecting to Google…',
+            ),
           )
         else if (error != null) ...[
           Text(
             error!,
             textAlign: TextAlign.center,
+            maxLines: 3,
             style: TextStyle(
               fontSize: 13,
               height: 1.35,
@@ -351,14 +493,14 @@ class _AuthBlock extends StatelessWidget {
             ),
           ),
         ],
-        AccentButton(
-          'Continue with Google',
-          onPressed: syncing ? null : onSignIn,
+        _PressableButton(
+          label: 'Continue with Google',
+          onPressed: busy ? () {} : onSignIn,
         ),
         const SizedBox(height: 10),
         QuietButton(
           'Explore with Sample Data',
-          onPressed: syncing ? null : onDemo,
+          onPressed: busy ? null : onDemo,
         ),
         const SizedBox(height: 12),
         Text(
