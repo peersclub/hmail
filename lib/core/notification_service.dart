@@ -24,6 +24,7 @@ import 'package:timezone/data/latest_all.dart' as tzdata;
 import 'package:timezone/timezone.dart' as tz;
 
 import '../domain/models.dart';
+import 'upcoming_alerts.dart';
 
 /// Stable id for the daily brief so re-scheduling after each sync replaces
 /// the pending notification instead of stacking a new one per sync.
@@ -223,6 +224,69 @@ class NotificationService {
         ),
         payload: payload,
       );
+    } catch (_) {
+      // Best-effort, same rationale as scheduleDailyBrief.
+    }
+  }
+
+  /// Replaces every scheduled upcoming alert with [alerts] (built by
+  /// `buildUpcomingAlerts`). Cancels only pending notifications inside the
+  /// [upcomingAlertIdFloor]..[upcomingAlertIdCeiling] namespace — the daily
+  /// brief and already-shown insight notifications are untouched — so no
+  /// extra bookkeeping store is needed.
+  ///
+  /// Each alert's [UpcomingAlert.fireAt] is a local wall-clock target from
+  /// the pure builder; a target that has already passed (e.g. a renewal only
+  /// 1.5 days out, whose "two days before at 9am" moment is behind us) is
+  /// bumped to fire five minutes from now instead of being dropped.
+  ///
+  /// Best-effort like [scheduleDailyBrief]: never throws, and everything
+  /// still renders in-app if scheduling fails.
+  Future<void> syncUpcomingAlerts(List<UpcomingAlert> alerts) async {
+    if (!_enabled) return;
+    try {
+      final pending = await _plugin.pendingNotificationRequests();
+      for (final request in pending) {
+        if (request.id >= upcomingAlertIdFloor &&
+            request.id <= upcomingAlertIdCeiling) {
+          await _plugin.cancel(id: request.id);
+        }
+      }
+
+      final now = tz.TZDateTime.now(tz.local);
+      for (final alert in alerts) {
+        var fireAt = tz.TZDateTime(
+          tz.local,
+          alert.fireAt.year,
+          alert.fireAt.month,
+          alert.fireAt.day,
+          alert.fireAt.hour,
+          alert.fireAt.minute,
+        );
+        if (!fireAt.isAfter(now)) {
+          fireAt = now.add(const Duration(minutes: 5));
+        }
+        await _plugin.zonedSchedule(
+          id: alert.id,
+          title: alert.title,
+          body: alert.body,
+          scheduledDate: fireAt,
+          notificationDetails: NotificationDetails(
+            android: AndroidNotificationDetails(
+              'upcoming_alerts',
+              'Upcoming alerts',
+              channelDescription:
+                  'Renewals, bills and return windows about to hit',
+              styleInformation: BigTextStyleInformation(alert.body),
+            ),
+            iOS: const DarwinNotificationDetails(),
+          ),
+          // One-shot (no matchDateTimeComponents): each alert is about a
+          // specific date, and the next sync rebuilds the whole set anyway.
+          androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
+          payload: alert.payload,
+        );
+      }
     } catch (_) {
       // Best-effort, same rationale as scheduleDailyBrief.
     }
