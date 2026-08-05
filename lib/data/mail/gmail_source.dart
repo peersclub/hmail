@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:googleapis/gmail/v1.dart';
+import 'package:http/http.dart' as http;
 
 import '../../domain/models.dart';
 import '../../domain/scan_settings.dart';
@@ -14,7 +15,41 @@ class GmailSource implements MailSource {
   final GmailApi api;
   final ScanSettings settings;
 
-  GmailSource(this.api, {this.settings = const ScanSettings()});
+  /// Overrides [ScanSettings.maxEmailsPerQuery] as the per-query ceiling when
+  /// set, so callers can raise the cap without a settings change. Null keeps
+  /// today's default (25).
+  final int? _perQueryCap;
+
+  /// Delay before retry N (1-based) of a throttled request. Injectable so
+  /// tests can observe the schedule; defaults to 1s / 2s / 4s.
+  final Duration Function(int retry) _retryDelay;
+
+  /// How to actually wait. Tests inject a zero-delay recorder.
+  final Future<void> Function(Duration delay) _sleep;
+
+  /// Where the last Retry-After header lives, when the caller routed the api
+  /// through a [RetryAfterClient]. Null means backoff is purely exponential —
+  /// [GmailApi] swallows response headers before throwing, so this is the
+  /// only way to see the server's own pacing.
+  final RetryAfterClient? _retryAfterSource;
+
+  GmailSource(
+    this.api, {
+    this.settings = const ScanSettings(),
+    int? perQueryCap,
+    Duration Function(int retry)? retryDelay,
+    Future<void> Function(Duration delay)? sleep,
+    RetryAfterClient? retryAfterSource,
+  })  : _perQueryCap = perQueryCap,
+        _retryDelay = retryDelay ?? _defaultRetryDelay,
+        _sleep = sleep ?? _defaultSleep,
+        _retryAfterSource = retryAfterSource;
+
+  static Duration _defaultRetryDelay(int retry) =>
+      Duration(seconds: 1 << (retry - 1));
+
+  static Future<void> _defaultSleep(Duration delay) =>
+      Future<void>.delayed(delay);
 
   /// Queries for the domains the user left switched on. Bills and deliveries
   /// keep tight windows regardless of [ScanSettings.historyDays] — a bill
@@ -74,7 +109,7 @@ class GmailSource implements MailSource {
   }) async {
     final seen = <String>{};
     final results = <EmailMeta>[];
-    final perQuery = maxPerQuery ?? settings.maxEmailsPerQuery;
+    final perQuery = maxPerQuery ?? _perQueryCap ?? settings.maxEmailsPerQuery;
     failures = 0;
 
     final planned = plannedQueries(settings);
@@ -84,12 +119,7 @@ class GmailSource implements MailSource {
 
       final List<Message> refs;
       try {
-        final list = await api.users.messages.list(
-          'me',
-          q: planned[q].query,
-          maxResults: perQuery,
-        );
-        refs = list.messages ?? const <Message>[];
+        refs = await _listPages(planned[q].query, perQuery);
       } catch (_) {
         failures++;
         onProgress?.call('Search for $label failed — carrying on');
@@ -101,8 +131,8 @@ class GmailSource implements MailSource {
         final id = ref.id;
         if (id == null || !seen.add(id)) continue;
         try {
-          final message =
-              await api.users.messages.get('me', id, format: 'full');
+          final message = await _withRetry(
+              () => api.users.messages.get('me', id, format: 'full'));
           final meta = _toMeta(message);
           if (meta != null) results.add(meta);
         } catch (_) {
@@ -127,6 +157,77 @@ class GmailSource implements MailSource {
 
   /// Requests dropped during the last [fetchCandidates].
   int failures = 0;
+
+  /// Lists message refs for [query], following `nextPageToken` until [cap]
+  /// refs are in hand or Gmail runs out of pages.
+  ///
+  /// The first page is the same request the pre-pagination code sent
+  /// (`maxResults: cap`, no page token), so default traffic is unchanged —
+  /// extra pages only happen when Gmail returns short pages with more to
+  /// give. A page that dies after retries ends the walk: with nothing in
+  /// hand that rethrows (the query is dead), with earlier pages banked it
+  /// returns the partial haul, because a short list beats no list.
+  Future<List<Message>> _listPages(String query, int cap) async {
+    final refs = <Message>[];
+    String? pageToken;
+    while (true) {
+      final ListMessagesResponse list;
+      try {
+        list = await _withRetry(() => api.users.messages.list(
+              'me',
+              q: query,
+              maxResults: cap - refs.length,
+              pageToken: pageToken,
+            ));
+      } catch (_) {
+        if (refs.isEmpty) rethrow;
+        failures++;
+        return refs;
+      }
+      refs.addAll(list.messages ?? const <Message>[]);
+      pageToken = list.nextPageToken;
+      if (pageToken == null || refs.length >= cap) {
+        return refs.length > cap ? refs.sublist(0, cap) : refs;
+      }
+    }
+  }
+
+  /// Retries after the initial attempt — 3 means at most 4 tries total.
+  static const _maxRetries = 3;
+
+  /// Runs [send], retrying quota and server hiccups so a moment of
+  /// throttling doesn't kill the account's whole scan.
+  ///
+  /// Only Gmail's own transient verdicts are retried — 429, 403 rate limits,
+  /// 5xx. Network-level exceptions (socket death, bad descriptors) still
+  /// fail immediately: when the phone is offline, sleeping between retries
+  /// would turn a fast failure into a hung scan. The wait honours the
+  /// server's Retry-After when a [RetryAfterClient] captured one, else falls
+  /// back to the exponential schedule.
+  Future<T> _withRetry<T>(Future<T> Function() send) async {
+    for (var retry = 0; ; retry++) {
+      try {
+        return await send();
+      } on DetailedApiRequestError catch (error) {
+        if (retry >= _maxRetries || !_isTransient(error)) rethrow;
+        await _sleep(
+            _retryAfterSource?.lastRetryAfter ?? _retryDelay(retry + 1));
+      }
+    }
+  }
+
+  /// Worth retrying: quota (429, or 403 with a rate-limit reason) and
+  /// server-side errors (5xx). A plain 403 is a permissions problem and a
+  /// retry would just burn quota on the same answer.
+  static bool _isTransient(DetailedApiRequestError error) {
+    final status = error.status;
+    if (status == null) return false;
+    if (status == 429 || status >= 500) return true;
+    if (status != 403) return false;
+    const throttled = {'rateLimitExceeded', 'userRateLimitExceeded'};
+    return error.errors.any((detail) => throttled.contains(detail.reason)) ||
+        throttled.any((reason) => error.message?.contains(reason) ?? false);
+  }
 
   EmailMeta? _toMeta(Message message) {
     final id = message.id;
@@ -182,5 +283,45 @@ class GmailSource implements MailSource {
       if (found != null) return found;
     }
     return null;
+  }
+}
+
+/// An http client that remembers the Retry-After header of the last response.
+///
+/// [GmailApi] discards response headers before throwing, so backoff code
+/// downstream can never see how long the server asked us to wait. Wrap the
+/// authenticated client in one of these, hand it to both [GmailApi] and
+/// [GmailSource] (`retryAfterSource:`), and throttled retries pace themselves
+/// to the server instead of guessing. Without it, [GmailSource] simply falls
+/// back to exponential backoff.
+class RetryAfterClient extends http.BaseClient {
+  final http.Client _inner;
+
+  /// Retry-After from the most recent response; null when the response had
+  /// none — every send overwrites it, so a stale header never outlives the
+  /// response it arrived on.
+  Duration? lastRetryAfter;
+
+  RetryAfterClient(this._inner);
+
+  @override
+  Future<http.StreamedResponse> send(http.BaseRequest request) async {
+    final response = await _inner.send(request);
+    lastRetryAfter = _parseRetryAfter(
+        response.headers['retry-after'] ?? response.headers['Retry-After']);
+    return response;
+  }
+
+  @override
+  void close() => _inner.close();
+
+  /// Delta-seconds only (Gmail's form); the HTTP-date form falls back to
+  /// exponential backoff. Clamped to 30s so a hostile or broken header can't
+  /// hang a scan.
+  static Duration? _parseRetryAfter(String? header) {
+    if (header == null) return null;
+    final seconds = int.tryParse(header.trim());
+    if (seconds == null || seconds < 0) return null;
+    return Duration(seconds: seconds > 30 ? 30 : seconds);
   }
 }
