@@ -556,60 +556,40 @@ class _PriceSceneState extends _SceneState<PriceScene> {
         _Copy(
           parent: controller,
           headline: 'Money moves\nquietly',
-          body: 'Renewals, bills and the price rises nobody announces. '
-              'NoMail compares this month with last and tells you.',
+          body: 'Every subscription in one number — and the price rises '
+              'nobody announces.',
         ),
-        const SizedBox(height: 30),
+        const SizedBox(height: 26),
+        // The whole recurring bill, then the list. Leading with the total is
+        // what makes the scene about the user's spend rather than about one
+        // merchant: a single row would read as "we found a thing", where a
+        // total plus a list reads as "we are watching all of it".
         _Rise(
           parent: controller,
-          begin: 0.3,
-          end: 0.85,
+          begin: 0.26,
+          end: 0.8,
           child: _Panel(
-            padding: const EdgeInsets.fromLTRB(18, 16, 18, 16),
+            padding: const EdgeInsets.fromLTRB(18, 16, 18, 6),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Row(
+                  crossAxisAlignment: CrossAxisAlignment.baseline,
+                  textBaseline: TextBaseline.alphabetic,
                   children: [
-                    // The arrow is the idle detail: it lifts and settles on a
-                    // 4.2s breath, which reads as attention rather than motion.
-                    AnimatedBuilder(
-                      animation: idle,
-                      builder: (context, child) => Transform.translate(
-                        offset: Offset(0, -2 * idle.value),
-                        child: child,
-                      ),
-                      child: Icon(CupertinoIcons.arrow_up_right,
-                          size: 17, color: ink),
-                    ),
-                    const SizedBox(width: 9),
-                    Expanded(
-                      child: Text(
-                        'Netflix',
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          fontSize: 17,
-                          fontWeight: FontWeight.w600,
-                          letterSpacing: -0.4,
-                          color: ink,
-                        ),
-                      ),
-                    ),
-                    // Counts up with the entrance, then holds. Driven by the
-                    // scene controller, so no extra ticker.
+                    // Counts up on entrance. Driven by the scene's own
+                    // controller, so the whole panel still costs one ticker.
                     AnimatedBuilder(
                       animation: controller,
                       builder: (context, _) {
                         final t = Curves.easeOutCubic
-                            .transform(_slice(controller.value, 0.42, 0.92));
-                        final value = 649 + (699 - 649) * t;
+                            .transform(_slice(controller.value, 0.3, 0.9));
                         return Text(
-                          '₹${value.round()}',
+                          '₹${(_monthlyTotal * t).round()}',
                           style: TextStyle(
-                            fontSize: 19,
+                            fontSize: 32,
                             fontWeight: FontWeight.w700,
-                            letterSpacing: -0.5,
+                            letterSpacing: -1,
                             color: ink,
                             fontFeatures: const [
                               FontFeature.tabularFigures(),
@@ -618,13 +598,30 @@ class _PriceSceneState extends _SceneState<PriceScene> {
                         );
                       },
                     ),
+                    const SizedBox(width: 6),
+                    Text(
+                      'a month',
+                      style: TextStyle(fontSize: 15, color: muted),
+                    ),
                   ],
                 ),
-                const SizedBox(height: 8),
+                const SizedBox(height: 2),
                 Text(
-                  'Was ₹649 last month · +₹50/mo',
+                  'across 6 subscriptions',
                   style: TextStyle(fontSize: 13, color: muted),
                 ),
+                const SizedBox(height: 12),
+                for (var i = 0; i < _services.length; i++)
+                  _ServiceRow(
+                    parent: controller,
+                    idle: idle,
+                    service: _services[i],
+                    // Each row gets its own slice, so the list fills in rather
+                    // than appearing all at once.
+                    begin: 0.42 + i * 0.09,
+                    end: 0.88 + i * 0.04,
+                    showDivider: i < _services.length - 1,
+                  ),
               ],
             ),
           ),
@@ -632,15 +629,143 @@ class _PriceSceneState extends _SceneState<PriceScene> {
         const SizedBox(height: 14),
         _Rise(
           parent: controller,
-          begin: 0.46,
-          end: 0.95,
+          begin: 0.62,
+          end: 1.0,
           child: Text(
-            'It also nudges you two days before a renewal, '
-            'and the day before a return window shuts.',
+            'Nudges land two days before a renewal, and the day before a '
+            'return window shuts.',
             style: TextStyle(fontSize: 14, height: 1.42, color: muted),
           ),
         ),
       ],
+    );
+  }
+}
+
+/// One subscription, and whether its price moved.
+///
+/// `rose` is what earns the arrow and the delta caption. Exactly one row in the
+/// list has it: the contrast is what makes the catch legible — if every row
+/// were rising, none of them would stand out.
+typedef _Service = ({String name, int amount, int? was});
+
+const _services = <_Service>[
+  (name: 'Netflix', amount: 699, was: 649),
+  (name: 'Spotify', amount: 119, was: null),
+  (name: 'iCloud+', amount: 219, was: null),
+];
+
+/// Illustrative, and rounded to look like a real Indian recurring bill rather
+/// than the sum of three demo rows — the panel says "6 subscriptions", so the
+/// total has to be bigger than what is listed or the arithmetic invites doubt.
+const _monthlyTotal = 1737;
+
+class _ServiceRow extends StatelessWidget {
+  final Animation<double> parent;
+  final Animation<double> idle;
+  final _Service service;
+  final double begin;
+  final double end;
+  final bool showDivider;
+
+  const _ServiceRow({
+    required this.parent,
+    required this.idle,
+    required this.service,
+    required this.begin,
+    required this.end,
+    required this.showDivider,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final ink = Palette.label(context);
+    final muted = Palette.secondaryLabel(context);
+    final was = service.was;
+    final rose = was != null;
+
+    return _Rise(
+      parent: parent,
+      begin: begin,
+      end: end,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 9),
+        child: Column(
+          children: [
+            Row(
+              children: [
+                if (rose)
+                  // The arrow is the idle detail: it lifts about two points on
+                  // a 4.2s breath, which reads as attention rather than motion.
+                  AnimatedBuilder(
+                    animation: idle,
+                    builder: (context, child) => Transform.translate(
+                      offset: Offset(0, -2 * idle.value),
+                      child: child,
+                    ),
+                    child: Icon(CupertinoIcons.arrow_up_right,
+                        size: 15, color: ink),
+                  )
+                else
+                  Icon(CupertinoIcons.arrow_2_circlepath,
+                      size: 15, color: muted),
+                const SizedBox(width: 9),
+                Expanded(
+                  child: Text(
+                    service.name,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 16,
+                      letterSpacing: -0.3,
+                      color: ink,
+                    ),
+                  ),
+                ),
+                if (rose) ...[
+                  Text(
+                    '₹$was',
+                    style: TextStyle(
+                      fontSize: 14,
+                      color: muted,
+                      decoration: TextDecoration.lineThrough,
+                      fontFeatures: const [FontFeature.tabularFigures()],
+                    ),
+                  ),
+                  const SizedBox(width: 7),
+                ],
+                Text(
+                  '₹${service.amount}',
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: rose ? FontWeight.w700 : FontWeight.w500,
+                    letterSpacing: -0.3,
+                    color: rose ? ink : muted,
+                    fontFeatures: const [FontFeature.tabularFigures()],
+                  ),
+                ),
+              ],
+            ),
+            if (rose) ...[
+              const SizedBox(height: 5),
+              Align(
+                alignment: Alignment.centerLeft,
+                child: Padding(
+                  padding: const EdgeInsets.only(left: 24),
+                  child: Text(
+                    'Up ₹${service.amount - was} since last month',
+                    style: TextStyle(fontSize: 12.5, color: muted),
+                  ),
+                ),
+              ),
+            ],
+            if (showDivider) ...[
+              const SizedBox(height: 9),
+              Container(height: 1, color: Palette.hairline(context)),
+            ],
+          ],
+        ),
+      ),
     );
   }
 }

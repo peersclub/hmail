@@ -283,9 +283,24 @@ class _Scene extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final reduced = MediaQuery.disableAnimationsOf(context);
-    final content = Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 26),
-      child: _body(),
+    // Centred when it fits, scrollable when it does not. A scene is a fixed
+    // Column, so at large Dynamic Type it overflowed by up to 378px on a small
+    // phone — the layout guard caught that the moment onboarding was added to
+    // it. `minHeight` keeps the composition vertically centred at normal sizes
+    // instead of pinning it to the top, which is what a bare scroll view would
+    // do. Vertical scrolling inside a horizontal PageView is unambiguous, so
+    // this costs the swipe nothing.
+    final content = LayoutBuilder(
+      builder: (context, constraints) => SingleChildScrollView(
+        physics: const ClampingScrollPhysics(),
+        child: ConstrainedBox(
+          constraints: BoxConstraints(minHeight: constraints.maxHeight),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 26),
+            child: _body(),
+          ),
+        ),
+      ),
     );
 
     if (reduced) return content;
