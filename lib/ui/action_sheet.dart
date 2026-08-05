@@ -17,6 +17,7 @@ import '../core/palette.dart';
 import '../domain/actions.dart';
 import '../domain/deep_links.dart';
 import '../domain/link_feedback.dart';
+import 'glass/glass.dart' show showSheet;
 
 /// Shared across the app so the ~43 scheme probes happen once per session.
 final InstalledApps installedApps = InstalledApps();
@@ -62,7 +63,7 @@ Future<void> showInsightActions(
     return;
   }
 
-  await showCupertinoModalPopup<void>(
+  await showSheet<void>(
     context: context,
     builder: (sheetContext) => CupertinoActionSheet(
       title: Text(title),

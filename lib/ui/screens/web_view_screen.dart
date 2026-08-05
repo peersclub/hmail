@@ -337,11 +337,22 @@ class _WebViewScreenState extends State<WebViewScreen> {
                         child: Center(child: CupertinoActivityIndicator()),
                       ),
                     ),
+                  // The page itself keeps the full width — sites are
+                  // responsive, and a wide viewport is the iPad's advantage.
+                  // Only the chrome is capped, so the feedback buttons stay a
+                  // reachable cluster instead of spreading to both edges.
                   Positioned(
                     left: 0,
                     right: 0,
                     bottom: 0,
-                    child: _bottomBar(context),
+                    child: Align(
+                      alignment: Alignment.bottomCenter,
+                      child: ConstrainedBox(
+                        constraints:
+                            const BoxConstraints(maxWidth: kReadableWidth),
+                        child: _bottomBar(context),
+                      ),
+                    ),
                   ),
                 ],
               ),

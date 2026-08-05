@@ -30,42 +30,44 @@ class CorrectionsScreen extends StatelessWidget {
           backgroundColor: Color(0x00000000),
           border: null,
         ),
-        child: SafeArea(
-          child: ListView(
-            padding: EdgeInsets.zero,
-            children: [
-              if (rules.isEmpty)
-                const GlassEmptyState(
-                  icon: CupertinoIcons.hand_thumbsdown,
-                  title: 'Nothing Hidden',
-                  caption:
-                      'When NoMail reads something wrong — a release note as a '
-                      'package, a newsletter as a bill — tap it and choose '
-                      '"Not a package". It stops appearing, and lands here.',
-                )
-              else
-                GlassSection(
-                  label: 'Hidden',
-                  children: [
-                    for (final rule in rules)
-                      GlassRow(
-                        icon: CupertinoIcons.eye_slash,
-                        title: rule.label,
-                        titleMaxLines: 2,
-                        subtitle: 'Since ${formatDay(rule.at)}',
-                        trailingCaption: 'Undo',
-                        trailingCaptionColor: Palette.accent(context),
-                        onTap: () => app.unignore(rule.key),
-                      ),
-                  ],
+        child: ReadableWidth(
+          child: SafeArea(
+            child: ListView(
+              padding: EdgeInsets.zero,
+              children: [
+                if (rules.isEmpty)
+                  const GlassEmptyState(
+                    icon: CupertinoIcons.hand_thumbsdown,
+                    title: 'Nothing Hidden',
+                    caption:
+                        'When NoMail reads something wrong — a release note as a '
+                        'package, a newsletter as a bill — tap it and choose '
+                        '"Not a package". It stops appearing, and lands here.',
+                  )
+                else
+                  GlassSection(
+                    label: 'Hidden',
+                    children: [
+                      for (final rule in rules)
+                        GlassRow(
+                          icon: CupertinoIcons.eye_slash,
+                          title: rule.label,
+                          titleMaxLines: 2,
+                          subtitle: 'Since ${formatDay(rule.at)}',
+                          trailingCaption: 'Undo',
+                          trailingCaptionColor: Palette.accent(context),
+                          onTap: () => app.unignore(rule.key),
+                        ),
+                    ],
+                  ),
+                const Footnote(
+                  'Corrections hide insights, they never delete mail — and '
+                  'nothing was thrown away, so undoing one brings its insights '
+                  'straight back without another scan.',
                 ),
-              const Footnote(
-                'Corrections hide insights, they never delete mail — and '
-                'nothing was thrown away, so undoing one brings its insights '
-                'straight back without another scan.',
-              ),
-              const SizedBox(height: 24),
-            ],
+                const SizedBox(height: 24),
+              ],
+            ),
           ),
         ),
       ),

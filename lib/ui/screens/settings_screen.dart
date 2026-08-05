@@ -229,7 +229,7 @@ class SettingsScreen extends StatelessWidget {
   /// confirm the less-destructive account removal already gets.
   Future<void> _confirmSignOut(BuildContext context, AppController app) async {
     final isDemo = app.isDemo;
-    final confirmed = await showCupertinoModalPopup<bool>(
+    final confirmed = await showSheet<bool>(
       context: context,
       builder: (sheetContext) => CupertinoActionSheet(
         title: Text(isDemo ? 'Exit demo?' : 'Sign out?'),
@@ -291,7 +291,7 @@ class SettingsScreen extends StatelessWidget {
 
   Future<void> _pickBriefHour(BuildContext context, AppController app) async {
     const hours = [6, 7, 8, 9, 10, 20];
-    final chosen = await showCupertinoModalPopup<int>(
+    final chosen = await showSheet<int>(
       context: context,
       builder: (sheetContext) => CupertinoActionSheet(
         title: const Text('Daily brief'),
@@ -319,7 +319,7 @@ class SettingsScreen extends StatelessWidget {
   /// user didn't expect feels like data loss.
   Future<void> _confirmRescan(BuildContext context) async {
     final controller = context.read<AppController>();
-    final confirmed = await showCupertinoModalPopup<bool>(
+    final confirmed = await showSheet<bool>(
       context: context,
       builder: (sheetContext) => CupertinoActionSheet(
         title: const Text('Rescan everything?'),
@@ -530,7 +530,7 @@ class SettingsScreen extends StatelessWidget {
   Future<void> _confirmRemoveAccount(
       BuildContext context, String email) async {
     final controller = context.read<AppController>();
-    final confirmed = await showCupertinoModalPopup<bool>(
+    final confirmed = await showSheet<bool>(
       context: context,
       builder: (sheetContext) => CupertinoActionSheet(
         title: Text('Remove $email?'),

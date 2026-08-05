@@ -32,105 +32,107 @@ class ProcessingScreen extends StatelessWidget {
           backgroundColor: Color(0x00000000),
           border: null,
         ),
-        child: SafeArea(
-          child: ListView(
-            padding: EdgeInsets.zero,
-            children: [
-              Padding(
-                padding: const EdgeInsets.fromLTRB(20, 12, 20, 4),
-                child: GlassCard(
-                  padding: const EdgeInsets.all(20),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          if (busy) ...[
-                            const CupertinoActivityIndicator(),
-                            const SizedBox(width: 10),
-                          ],
-                          Expanded(
-                            child: Text(
-                              busy ? app.activityLine : report.headline,
-                              style: TextStyle(
-                                fontSize: 18,
-                                fontWeight: FontWeight.w600,
-                                height: 1.3,
-                                letterSpacing: -0.2,
-                                color: Palette.label(context),
+        child: ReadableWidth(
+          child: SafeArea(
+            child: ListView(
+              padding: EdgeInsets.zero,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 12, 20, 4),
+                  child: GlassCard(
+                    padding: const EdgeInsets.all(20),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            if (busy) ...[
+                              const CupertinoActivityIndicator(),
+                              const SizedBox(width: 10),
+                            ],
+                            Expanded(
+                              child: Text(
+                                busy ? app.activityLine : report.headline,
+                                style: TextStyle(
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.w600,
+                                  height: 1.3,
+                                  letterSpacing: -0.2,
+                                  color: Palette.label(context),
+                                ),
                               ),
+                            ),
+                          ],
+                        ),
+                        if (busy) ...[
+                          const SizedBox(height: 6),
+                          Text(
+                            app.stage.label,
+                            style: TextStyle(
+                              fontSize: 13,
+                              color: Palette.secondaryLabel(context),
+                            ),
+                          ),
+                        ] else if (!report.neverSynced) ...[
+                          const SizedBox(height: 6),
+                          Text(
+                            'Last scan ${formatDay(report.startedAt)} · '
+                            'took ${_seconds(report.duration)}',
+                            style: TextStyle(
+                              fontSize: 13,
+                              color: Palette.secondaryLabel(context),
                             ),
                           ),
                         ],
-                      ),
-                      if (busy) ...[
-                        const SizedBox(height: 6),
-                        Text(
-                          app.stage.label,
-                          style: TextStyle(
-                            fontSize: 13,
-                            color: Palette.secondaryLabel(context),
-                          ),
-                        ),
-                      ] else if (!report.neverSynced) ...[
-                        const SizedBox(height: 6),
-                        Text(
-                          'Last scan ${formatDay(report.startedAt)} · '
-                          'took ${_seconds(report.duration)}',
-                          style: TextStyle(
-                            fontSize: 13,
-                            color: Palette.secondaryLabel(context),
-                          ),
-                        ),
                       ],
-                    ],
+                    ),
                   ),
                 ),
-              ),
-              _pipeline(context, app.stage),
-              if (report.breakdown.isNotEmpty)
+                _pipeline(context, app.stage),
+                if (report.breakdown.isNotEmpty)
+                  GlassSection(
+                    label: 'Extracted',
+                    children: [
+                      for (final line in report.breakdown)
+                        GlassRow(
+                          icon: CupertinoIcons.square_stack_3d_up,
+                          title: line,
+                        ),
+                    ],
+                  ),
                 GlassSection(
-                  label: 'Extracted',
+                  label: 'AI audit',
                   children: [
-                    for (final line in report.breakdown)
+                    GlassRow(
+                      icon: report.aiRan
+                          ? CupertinoIcons.sparkles
+                          : CupertinoIcons.circle,
+                      title: report.aiRan ? 'Checked every insight' : 'Not used',
+                      subtitle: report.aiError ??
+                          (report.aiRan
+                              ? '${report.aiCorrections} correction'
+                                  '${report.aiCorrections == 1 ? '' : 's'} '
+                                  'made to this scan'
+                              : 'Turn AI on to have results double-checked'),
+                      subtitleMaxLines: 2,
+                    ),
+                    for (final note in report.aiNotes)
                       GlassRow(
-                        icon: CupertinoIcons.square_stack_3d_up,
-                        title: line,
+                        icon: CupertinoIcons.wand_stars,
+                        iconTint: Palette.accent(context),
+                        title: note,
+                        titleMaxLines: 2,
                       ),
                   ],
                 ),
-              GlassSection(
-                label: 'AI audit',
-                children: [
-                  GlassRow(
-                    icon: report.aiRan
-                        ? CupertinoIcons.sparkles
-                        : CupertinoIcons.circle,
-                    title: report.aiRan ? 'Checked every insight' : 'Not used',
-                    subtitle: report.aiError ??
-                        (report.aiRan
-                            ? '${report.aiCorrections} correction'
-                                '${report.aiCorrections == 1 ? '' : 's'} '
-                                'made to this scan'
-                            : 'Turn AI on to have results double-checked'),
-                    subtitleMaxLines: 2,
-                  ),
-                  for (final note in report.aiNotes)
-                    GlassRow(
-                      icon: CupertinoIcons.wand_stars,
-                      iconTint: Palette.accent(context),
-                      title: note,
-                      titleMaxLines: 2,
-                    ),
-                ],
-              ),
-              const Footnote(
-                'Corrections apply to the stored insights, never to your '
-                'mail. Nothing in your Gmail is modified — the scope is '
-                'read-only.',
-              ),
-              const SizedBox(height: 24),
-            ],
+                const Footnote(
+                  'Corrections apply to the stored insights, never to your '
+                  'mail. Nothing in your Gmail is modified — the scope is '
+                  'read-only.',
+                ),
+                const SizedBox(height: 24),
+              ],
+            ),
           ),
         ),
       ),

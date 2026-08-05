@@ -16,6 +16,70 @@ import '../../core/palette.dart';
 /// dock never covers it.
 const double kDockClearance = 118;
 
+/// Widest the app's content is allowed to get.
+///
+/// The whole glass system — card padding, type scale, the share bar, row
+/// heights — was laid out against phone widths, and the app builds as a native
+/// iPad app (`TARGETED_DEVICE_FAMILY = "1,2"`). Left unconstrained on a 1366pt
+/// iPad, a two-word row title sits at one end of a metre-wide card with its
+/// amount at the other, and body text runs far past a comfortable line length.
+///
+/// 560 is a little past an iPhone Pro Max (430pt), so the phone layout is
+/// untouched and the iPad gets a familiar column rather than a stretched
+/// phone.
+const double kReadableWidth = 560;
+
+/// Widest a bottom sheet gets. Tighter than [kReadableWidth]: an action sheet
+/// is a short list of choices, and a wide one puts the label at one end of the
+/// row and nothing at the other.
+const double kSheetWidth = 480;
+
+/// [showCupertinoModalPopup] with the sheet capped to [kSheetWidth].
+///
+/// Flutter's action sheet takes the full width it is given, which on an iPad is
+/// the whole screen. Every sheet in the app goes through here so none of them
+/// can forget.
+Future<T?> showSheet<T>({
+  required BuildContext context,
+  required WidgetBuilder builder,
+}) =>
+    showCupertinoModalPopup<T>(
+      context: context,
+      builder: (sheetContext) => Align(
+        alignment: Alignment.bottomCenter,
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: kSheetWidth),
+          child: builder(sheetContext),
+        ),
+      ),
+    );
+
+/// Centres [child] and caps it at [kReadableWidth].
+///
+/// A no-op on every phone — the constraint only ever binds on iPad and in
+/// landscape — so it can be applied liberally without a per-device branch.
+class ReadableWidth extends StatelessWidget {
+  final Widget child;
+
+  /// Override for surfaces that want a tighter column, e.g. an action sheet.
+  final double maxWidth;
+
+  const ReadableWidth({
+    super.key,
+    required this.child,
+    this.maxWidth = kReadableWidth,
+  });
+
+  @override
+  Widget build(BuildContext context) => Align(
+        alignment: Alignment.topCenter,
+        child: ConstrainedBox(
+          constraints: BoxConstraints(maxWidth: maxWidth),
+          child: child,
+        ),
+      );
+}
+
 /// Ambient backdrop: soft vertical wash + two barely-there accent glows.
 /// Gives the glass something to refract; never competes with content.
 class GlassBackground extends StatelessWidget {

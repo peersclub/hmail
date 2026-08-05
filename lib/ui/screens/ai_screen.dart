@@ -52,7 +52,7 @@ class _AiScreenState extends State<AiScreen> {
       await _enterKey(context);
       return;
     }
-    final action = await showCupertinoModalPopup<String>(
+    final action = await showSheet<String>(
       context: context,
       builder: (sheetContext) => CupertinoActionSheet(
         title: const Text('OpenRouter key'),
@@ -159,105 +159,107 @@ class _AiScreenState extends State<AiScreen> {
           backgroundColor: Color(0x00000000),
           border: null,
         ),
-        child: SafeArea(
-          child: ListView(
-            padding: EdgeInsets.zero,
-            children: [
-              GlassSection(
-                label: 'Connection',
-                children: [
-                  GlassRow(
-                    icon: configured
-                        ? CupertinoIcons.checkmark_seal_fill
-                        : CupertinoIcons.lock_circle,
-                    iconTint: configured ? null : Palette.accent(context),
-                    title: configured ? 'Key configured' : 'Add your key',
-                    subtitle: status.maskedKey ??
-                        'Paste an OpenRouter API key to turn on AI '
-                            '(openrouter.ai → Keys)',
-                    subtitleMaxLines: 2,
-                    trailingCaption: configured ? 'Change' : 'Add',
-                    trailingCaptionColor: Palette.accent(context),
-                    onTap: () => _keyOptions(context),
-                  ),
-                  GlassRow(
-                    icon: CupertinoIcons.cube,
-                    title: 'Model',
-                    subtitle: _modelLabel(settings.aiModel),
-                    trailingCaption: 'Change',
-                    trailingCaptionColor: Palette.accent(context),
-                    onTap: configured ? () => _pickModel(context, app) : null,
-                  ),
-                  if (configured)
-                    GlassRow(
-                      icon: CupertinoIcons.bolt_horizontal,
-                      title: _testing ? 'Testing…' : 'Test connection',
-                      subtitle: _test?.summary ??
-                          'Send one tiny request and time the round trip',
-                      trailingCaption: _test == null
-                          ? null
-                          : (_test!.ok ? 'OK' : 'Failed'),
-                      trailingCaptionColor: _test == null
-                          ? null
-                          : (_test!.ok
-                              ? Palette.accent(context)
-                              : Palette.destructive(context)),
-                      onTap: _testing ? null : _runTest,
-                    ),
-                ],
-              ),
-              if (configured)
+        child: ReadableWidth(
+          child: SafeArea(
+            child: ListView(
+              padding: EdgeInsets.zero,
+              children: [
                 GlassSection(
-                  label: 'Spend',
+                  label: 'Connection',
                   children: [
                     GlassRow(
-                      icon: CupertinoIcons.chart_bar,
-                      title: 'Usage',
-                      subtitle: _loadingUsage
-                          ? 'Checking…'
-                          : (_usage?.spendSummary ?? 'Unavailable'),
-                      trailingCaption: 'Refresh',
+                      icon: configured
+                          ? CupertinoIcons.checkmark_seal_fill
+                          : CupertinoIcons.lock_circle,
+                      iconTint: configured ? null : Palette.accent(context),
+                      title: configured ? 'Key configured' : 'Add your key',
+                      subtitle: status.maskedKey ??
+                          'Paste an OpenRouter API key to turn on AI '
+                              '(openrouter.ai → Keys)',
+                      subtitleMaxLines: 2,
+                      trailingCaption: configured ? 'Change' : 'Add',
                       trailingCaptionColor: Palette.accent(context),
-                      onTap: () {
-                        setState(() => _loadingUsage = true);
-                        _loadUsage();
-                      },
+                      onTap: () => _keyOptions(context),
                     ),
-                    if (_usage?.warning != null)
+                    GlassRow(
+                      icon: CupertinoIcons.cube,
+                      title: 'Model',
+                      subtitle: _modelLabel(settings.aiModel),
+                      trailingCaption: 'Change',
+                      trailingCaptionColor: Palette.accent(context),
+                      onTap: configured ? () => _pickModel(context, app) : null,
+                    ),
+                    if (configured)
                       GlassRow(
-                        icon: CupertinoIcons.exclamationmark_shield,
-                        iconTint: Palette.destructive(context),
-                        title: _usage!.warning!,
-                        titleMaxLines: 2,
-                        subtitle:
-                            'Set a monthly cap at openrouter.ai/settings/keys',
-                        subtitleMaxLines: 2,
+                        icon: CupertinoIcons.bolt_horizontal,
+                        title: _testing ? 'Testing…' : 'Test connection',
+                        subtitle: _test?.summary ??
+                            'Send one tiny request and time the round trip',
+                        trailingCaption: _test == null
+                            ? null
+                            : (_test!.ok ? 'OK' : 'Failed'),
+                        trailingCaptionColor: _test == null
+                            ? null
+                            : (_test!.ok
+                                ? Palette.accent(context)
+                                : Palette.destructive(context)),
+                        onTap: _testing ? null : _runTest,
                       ),
                   ],
                 ),
-              GlassSection(
-                label: 'Privacy',
-                children: [
-                  _toggleRow(
-                    context,
-                    icon: CupertinoIcons.sparkles,
-                    title: 'Use AI',
-                    subtitle: 'Off means rules only — nothing leaves the device',
-                    value: settings.aiEnabled,
-                    onChanged: (on) => app.updateSettings(
-                      settings.copyWith(aiEnabled: on),
-                    ),
+                if (configured)
+                  GlassSection(
+                    label: 'Spend',
+                    children: [
+                      GlassRow(
+                        icon: CupertinoIcons.chart_bar,
+                        title: 'Usage',
+                        subtitle: _loadingUsage
+                            ? 'Checking…'
+                            : (_usage?.spendSummary ?? 'Unavailable'),
+                        trailingCaption: 'Refresh',
+                        trailingCaptionColor: Palette.accent(context),
+                        onTap: () {
+                          setState(() => _loadingUsage = true);
+                          _loadUsage();
+                        },
+                      ),
+                      if (_usage?.warning != null)
+                        GlassRow(
+                          icon: CupertinoIcons.exclamationmark_shield,
+                          iconTint: Palette.destructive(context),
+                          title: _usage!.warning!,
+                          titleMaxLines: 2,
+                          subtitle:
+                              'Set a monthly cap at openrouter.ai/settings/keys',
+                          subtitleMaxLines: 2,
+                        ),
+                    ],
                   ),
-                ],
-              ),
-              const Footnote(
-                'With AI on, NoMail sends the extracted summary — amounts, '
-                'dates, merchant names and email subjects — to OpenRouter to '
-                'write the brief and check its own results. Full email bodies '
-                'are never sent, and insights are stored only on this device.',
-              ),
-              const SizedBox(height: 24),
-            ],
+                GlassSection(
+                  label: 'Privacy',
+                  children: [
+                    _toggleRow(
+                      context,
+                      icon: CupertinoIcons.sparkles,
+                      title: 'Use AI',
+                      subtitle: 'Off means rules only — nothing leaves the device',
+                      value: settings.aiEnabled,
+                      onChanged: (on) => app.updateSettings(
+                        settings.copyWith(aiEnabled: on),
+                      ),
+                    ),
+                  ],
+                ),
+                const Footnote(
+                  'With AI on, NoMail sends the extracted summary — amounts, '
+                  'dates, merchant names and email subjects — to OpenRouter to '
+                  'write the brief and check its own results. Full email bodies '
+                  'are never sent, and insights are stored only on this device.',
+                ),
+                const SizedBox(height: 24),
+              ],
+            ),
           ),
         ),
       ),
@@ -272,7 +274,7 @@ class _AiScreenState extends State<AiScreen> {
   }
 
   Future<void> _pickModel(BuildContext context, AppController app) async {
-    final chosen = await showCupertinoModalPopup<String>(
+    final chosen = await showSheet<String>(
       context: context,
       builder: (sheetContext) => CupertinoActionSheet(
         title: const Text('Model'),

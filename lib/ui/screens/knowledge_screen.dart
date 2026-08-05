@@ -39,109 +39,111 @@ class KnowledgeScreen extends StatelessWidget {
           backgroundColor: Color(0x00000000),
           border: null,
         ),
-        child: SafeArea(
-          child: ListView(
-            padding: EdgeInsets.zero,
-            children: [
-              if (all.isEmpty)
-                const GlassEmptyState(
-                  icon: CupertinoIcons.lightbulb,
-                  title: 'Nothing Learned Yet',
-                  caption:
-                      'When NoMail meets a kind of email it does not recognise, '
-                      'it writes itself a recipe for handling it. Those recipes '
-                      'appear here.',
-                )
-              else ...[
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(20, 12, 20, 4),
-                  child: GlassCard(
-                    padding: const EdgeInsets.all(20),
-                    child: Column(
-                      children: [
-                        Text(
-                          '${all.length}',
-                          style: TextStyle(
-                            fontSize: 40,
-                            fontWeight: FontWeight.w800,
-                            letterSpacing: -1,
-                            color: Palette.label(context),
+        child: ReadableWidth(
+          child: SafeArea(
+            child: ListView(
+              padding: EdgeInsets.zero,
+              children: [
+                if (all.isEmpty)
+                  const GlassEmptyState(
+                    icon: CupertinoIcons.lightbulb,
+                    title: 'Nothing Learned Yet',
+                    caption:
+                        'When NoMail meets a kind of email it does not recognise, '
+                        'it writes itself a recipe for handling it. Those recipes '
+                        'appear here.',
+                  )
+                else ...[
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(20, 12, 20, 4),
+                    child: GlassCard(
+                      padding: const EdgeInsets.all(20),
+                      child: Column(
+                        children: [
+                          Text(
+                            '${all.length}',
+                            style: TextStyle(
+                              fontSize: 40,
+                              fontWeight: FontWeight.w800,
+                              letterSpacing: -1,
+                              color: Palette.label(context),
+                            ),
                           ),
-                        ),
-                        Text(
-                          all.length == 1
-                              ? 'thing NoMail taught itself'
-                              : 'things NoMail taught itself',
-                          style: TextStyle(
-                            fontSize: 14,
-                            color: Palette.secondaryLabel(context),
+                          Text(
+                            all.length == 1
+                                ? 'thing NoMail taught itself'
+                                : 'things NoMail taught itself',
+                            style: TextStyle(
+                              fontSize: 14,
+                              color: Palette.secondaryLabel(context),
+                            ),
                           ),
-                        ),
-                        const SizedBox(height: 8),
-                        Text(
-                          'Each one is applied without the AI, so it costs '
-                          'nothing and works offline.',
-                          textAlign: TextAlign.center,
-                          style: TextStyle(
-                            fontSize: 13,
-                            height: 1.35,
-                            color: Palette.secondaryLabel(context),
+                          const SizedBox(height: 8),
+                          Text(
+                            'Each one is applied without the AI, so it costs '
+                            'nothing and works offline.',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                              fontSize: 13,
+                              height: 1.35,
+                              color: Palette.secondaryLabel(context),
+                            ),
                           ),
-                        ),
-                      ],
+                        ],
+                      ),
                     ),
                   ),
+                  if (suspect.isNotEmpty)
+                    GlassSection(
+                      label: 'Needs review',
+                      children: [
+                        for (final type in suspect)
+                          GlassRow(
+                            icon: CupertinoIcons.exclamationmark_triangle_fill,
+                            iconTint: Palette.destructive(context),
+                            title: type.label,
+                            titleMaxLines: 2,
+                            subtitle: _suspectReason(app, type),
+                            subtitleMaxLines: 2,
+                            trailingCaption: 'Review',
+                            trailingCaptionColor: Palette.destructive(context),
+                            onTap: () => _showType(context, app, type),
+                          ),
+                      ],
+                    ),
+                  if (suspect.isNotEmpty)
+                    const Footnote(
+                      'These recipes built links you told us went to the wrong '
+                      'page, and none that worked. Turning one off keeps the '
+                      'emails it recognises — they just stop carrying its link.',
+                    ),
+                  if (types.isNotEmpty)
+                    GlassSection(
+                      label: 'Learned types',
+                      children: [
+                        for (final type in types)
+                          GlassRow(
+                            icon: type.enabled
+                                ? CupertinoIcons.lightbulb_fill
+                                : CupertinoIcons.lightbulb_slash,
+                            iconTint:
+                                type.enabled ? Palette.accent(context) : null,
+                            title: type.label,
+                            titleMaxLines: 2,
+                            subtitle: _describe(type),
+                            subtitleMaxLines: 2,
+                            onTap: () => _showType(context, app, type),
+                          ),
+                      ],
+                    ),
+                ],
+                const Footnote(
+                  'Recipes are stored on this device only. Nothing about what '
+                  'NoMail has learned is shared.',
                 ),
-                if (suspect.isNotEmpty)
-                  GlassSection(
-                    label: 'Needs review',
-                    children: [
-                      for (final type in suspect)
-                        GlassRow(
-                          icon: CupertinoIcons.exclamationmark_triangle_fill,
-                          iconTint: Palette.destructive(context),
-                          title: type.label,
-                          titleMaxLines: 2,
-                          subtitle: _suspectReason(app, type),
-                          subtitleMaxLines: 2,
-                          trailingCaption: 'Review',
-                          trailingCaptionColor: Palette.destructive(context),
-                          onTap: () => _showType(context, app, type),
-                        ),
-                    ],
-                  ),
-                if (suspect.isNotEmpty)
-                  const Footnote(
-                    'These recipes built links you told us went to the wrong '
-                    'page, and none that worked. Turning one off keeps the '
-                    'emails it recognises — they just stop carrying its link.',
-                  ),
-                if (types.isNotEmpty)
-                  GlassSection(
-                    label: 'Learned types',
-                    children: [
-                      for (final type in types)
-                        GlassRow(
-                          icon: type.enabled
-                              ? CupertinoIcons.lightbulb_fill
-                              : CupertinoIcons.lightbulb_slash,
-                          iconTint:
-                              type.enabled ? Palette.accent(context) : null,
-                          title: type.label,
-                          titleMaxLines: 2,
-                          subtitle: _describe(type),
-                          subtitleMaxLines: 2,
-                          onTap: () => _showType(context, app, type),
-                        ),
-                    ],
-                  ),
+                const SizedBox(height: 24),
               ],
-              const Footnote(
-                'Recipes are stored on this device only. Nothing about what '
-                'NoMail has learned is shared.',
-              ),
-              const SizedBox(height: 24),
-            ],
+            ),
           ),
         ),
       ),
@@ -174,7 +176,7 @@ class KnowledgeScreen extends StatelessWidget {
     final failures = app.linkFailuresFor(type.id);
     final reports = app.linkReportsFor(type.id);
 
-    final action = await showCupertinoModalPopup<String>(
+    final action = await showSheet<String>(
       context: context,
       builder: (sheetContext) => CupertinoActionSheet(
         title: Text(type.label),

@@ -54,15 +54,20 @@ class _ShellScreenState extends State<ShellScreen> {
       child: GlassBackground(
         child: Stack(
           children: [
+            // One constraint for all four tabs: the backdrop and its glows
+            // still fill the screen, only the content column is capped.
             Positioned.fill(
-              child: IndexedStack(
-                index: _index,
-                children: [
-                  TodayScreen(onNavigate: (tab) => setState(() => _index = tab)),
-                  const MoneyScreen(),
-                  const TimelineScreen(),
-                  const SettingsScreen(),
-                ],
+              child: ReadableWidth(
+                child: IndexedStack(
+                  index: _index,
+                  children: [
+                    TodayScreen(
+                        onNavigate: (tab) => setState(() => _index = tab)),
+                    const MoneyScreen(),
+                    const TimelineScreen(),
+                    const SettingsScreen(),
+                  ],
+                ),
               ),
             ),
             // Status-bar scrim: keeps scrolled content legible under the clock.
@@ -93,9 +98,14 @@ class _ShellScreenState extends State<ShellScreen> {
             ),
             Align(
               alignment: Alignment.bottomCenter,
-              child: GlassDock(
-                index: _index,
-                onChanged: (i) => setState(() => _index = i),
+              child: ConstrainedBox(
+                // The dock is a floating pill, not a full-width tab bar — on
+                // an iPad it has to stay a pill.
+                constraints: const BoxConstraints(maxWidth: kReadableWidth),
+                child: GlassDock(
+                  index: _index,
+                  onChanged: (i) => setState(() => _index = i),
+                ),
               ),
             ),
           ],

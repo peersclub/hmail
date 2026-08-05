@@ -62,26 +62,28 @@ class _BackupScreenState extends State<BackupScreen> {
           backgroundColor: Color(0x00000000),
           border: null,
         ),
-        child: SafeArea(
-          child: ListView(
-            padding: EdgeInsets.zero,
-            children: [
-              const SizedBox(height: 10),
-              if (app.isDemo)
-                ..._demoJourney(context)
-              else ...[
-                _backupSection(context, app),
-                _destinationSection(context, app),
-                _frequencySection(context, app),
-                _restoreSection(context, app),
+        child: ReadableWidth(
+          child: SafeArea(
+            child: ListView(
+              padding: EdgeInsets.zero,
+              children: [
+                const SizedBox(height: 10),
+                if (app.isDemo)
+                  ..._demoJourney(context)
+                else ...[
+                  _backupSection(context, app),
+                  _destinationSection(context, app),
+                  _frequencySection(context, app),
+                  _restoreSection(context, app),
+                ],
+                const Footnote(
+                  'Backups hold only NoMail\'s insights and learned knowledge — '
+                  'never your mail. Google Drive backups live in a hidden '
+                  'app-only folder; no other app can read them.',
+                ),
+                const SizedBox(height: kDockClearance),
               ],
-              const Footnote(
-                'Backups hold only NoMail\'s insights and learned knowledge — '
-                'never your mail. Google Drive backups live in a hidden '
-                'app-only folder; no other app can read them.',
-              ),
-              const SizedBox(height: kDockClearance),
-            ],
+            ),
           ),
         ),
       ),
@@ -449,7 +451,7 @@ class _BackupScreenState extends State<BackupScreen> {
   }
 
   Future<void> _pickFrequency(BuildContext context, AppController app) async {
-    final chosen = await showCupertinoModalPopup<BackupFrequency>(
+    final chosen = await showSheet<BackupFrequency>(
       context: context,
       builder: (sheetContext) => CupertinoActionSheet(
         title: const Text('Auto backup'),
