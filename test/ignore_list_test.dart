@@ -209,13 +209,16 @@ void main() {
     });
 
     test('a meeting keys on the organiser, not the title', () {
+      // Relative to the real clock, not the file's fixed _now: `upcomingEvents`
+      // filters on DateTime.now(), so a hardcoded date silently empties this
+      // list the moment the day rolls over.
       final insights = snapshotToInsights(InsightSnapshot(
         events: [
           EventItem(
             title: 'Weekly standup',
-            start: _now.add(const Duration(days: 1)),
+            start: DateTime.now().add(const Duration(days: 1)),
             organizer: 'standup-bot@corp.com',
-            lastSeen: _now,
+            lastSeen: DateTime.now(),
             sourceEmailId: 'e1',
           ),
         ],

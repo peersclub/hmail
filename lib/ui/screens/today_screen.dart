@@ -14,6 +14,7 @@ import '../format.dart';
 import '../glass/glass.dart';
 import '../insight_card.dart';
 import '../widgets/journey_states.dart';
+import 'brief_screen.dart';
 import 'processing_screen.dart';
 
 /// Today — the morning-glance screen. Brief, counts, and everything that
@@ -298,14 +299,19 @@ class TodayScreen extends StatelessWidget {
       {required bool ai}) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 20),
-      child: GlassCard(
+      child: PressableRow(
+        onTap: () => Navigator.of(context, rootNavigator: true).push(
+          CupertinoPageRoute<void>(builder: (_) => const BriefScreen()),
+        ),
+        child: GlassCard(
         padding: const EdgeInsets.all(20),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              // An AI-written headline has no length contract, so cap it here
-              // rather than trust the model to be brief.
+              // Capped here because this is the glance. The cap is exactly why
+              // the card is tappable: a long headline is truncated, and the
+              // rest of it has to be reachable somewhere.
               brief.headline,
               maxLines: 4,
               overflow: TextOverflow.ellipsis,
@@ -368,9 +374,22 @@ class TodayScreen extends StatelessWidget {
                     ),
                   ),
                 ),
+                const SizedBox(width: 10),
+                Text(
+                  'Read it all',
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                    color: Palette.accent(context),
+                  ),
+                ),
+                const SizedBox(width: 2),
+                Icon(CupertinoIcons.chevron_forward,
+                    size: 12, color: Palette.accent(context)),
               ],
             ),
           ],
+        ),
         ),
       ),
     );

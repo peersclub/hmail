@@ -27,6 +27,7 @@ import 'package:hmail/data/mail/gmail_auth.dart';
 import 'package:hmail/domain/models.dart';
 import 'package:hmail/state/app_controller.dart';
 import 'package:hmail/ui/glass/glass.dart';
+import 'package:hmail/ui/screens/brief_screen.dart';
 import 'package:hmail/ui/screens/money_screen.dart';
 import 'package:hmail/ui/screens/onboarding_screen.dart';
 import 'package:hmail/ui/screens/settings_screen.dart';
@@ -153,6 +154,8 @@ final _screens = <String, Widget Function()>{
   // Onboarding is a fixed Column with no scroll view, which makes it the most
   // overflow-prone screen in the app at large Dynamic Type.
   'Onboarding': () => const OnboardingScreen(),
+  // Untruncated by design, so it is the screen most likely to overflow.
+  'Brief': () => const BriefScreen(),
 };
 
 void main() {
