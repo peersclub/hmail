@@ -296,17 +296,20 @@ class _InboxSceneState extends _SceneState<InboxScene> {
   @override
   bool get active => widget.active;
 
-  /// The one deliberate haptic in the flow: the moment the noise becomes
-  /// three things you can act on. Medium, because it is the point of the app.
+  /// The one deliberate haptic in the flow: the moment the noise sorts itself
+  /// into three things you can act on. Medium, because it is the point of the
+  /// app.
   @override
   void onResolve() => HapticFeedback.mediumImpact();
 
-  /// Widths of the fake mail bars, as fractions. Irregular on purpose —
-  /// evenly-sized bars read as a loading skeleton, not as a mailbox.
-  static const _noise = [0.92, 0.68, 0.85, 0.54, 0.78, 0.61, 0.88, 0.47];
-
   @override
   Widget build(BuildContext context) {
+    // At accessibility text sizes the choreography cannot fit — absolute slots
+    // and two-line rows stop agreeing. Those users get the finished composition
+    // as an ordinary Column: the content is the promise, the animation is the
+    // flourish, and only one of those is negotiable.
+    final crowded = MediaQuery.textScalerOf(context).scale(15) > 21;
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       mainAxisAlignment: MainAxisAlignment.center,
@@ -336,183 +339,296 @@ class _InboxSceneState extends _SceneState<InboxScene> {
         _Copy(
           parent: controller,
           headline: 'Your inbox,\nminus the inbox',
-          body: 'NoMail reads your mail and keeps only what needs doing — '
-              'each with the link that finishes it.',
+          body: 'Six emails arrive. Three of them need you. NoMail keeps '
+              'those, each with the link that finishes it.',
         ),
-        const SizedBox(height: 30),
-        // Fixed height so the collapse happens *inside* a stable box: animating
-        // a Column's height would relayout the whole scene every frame.
-        SizedBox(
-          height: 208,
-          child: AnimatedBuilder(
-            animation: controller,
-            builder: (context, _) => _CollapsePainterHost(
-              t: controller.value,
-              noise: _noise,
-              ink: Palette.label(context),
-              muted: Palette.tertiaryLabel(context),
-              fill: Palette.badgeFill(context),
-              line: Palette.hairline(context),
+        SizedBox(height: crowded ? 20 : 26),
+        if (crowded)
+          for (final mail in _mail)
+            if (mail.insight != null) ...[
+              _Rise(
+                parent: controller,
+                begin: 0.4,
+                end: 0.95,
+                child: _InsightRow(mail: mail),
+              ),
+              const SizedBox(height: 10),
+            ]
+        else
+          // Fixed height so the sort happens inside a stable box: rows are
+          // absolutely positioned and move by translation, so the Column never
+          // reflows and no layout pass runs per frame.
+          SizedBox(
+            height: _boxHeight,
+            child: AnimatedBuilder(
+              animation: controller,
+              builder: (context, _) => _SortingInbox(t: controller.value),
             ),
           ),
-        ),
       ],
     );
   }
 }
 
-/// Hosts the collapse painting. Split out so the `AnimatedBuilder` above
-/// rebuilds one cheap widget rather than the scene's text.
-class _CollapsePainterHost extends StatelessWidget {
-  final double t;
-  final List<double> noise;
-  final Color ink;
-  final Color muted;
-  final Color fill;
-  final Color line;
+/// One email in the demonstration, and what NoMail makes of it.
+///
+/// [insight] null means the mail is noise — it arrives, and it is dropped. Half
+/// the point of the scene is watching that happen: "minus the inbox" is a claim
+/// about what NoMail *discards*, and a demonstration that only ever added
+/// things would not be making it.
+typedef _Mail = ({
+  String subject,
+  IconData? icon,
+  ({String title, String detail, String value})? insight,
+});
 
-  const _CollapsePainterHost({
-    required this.t,
-    required this.noise,
-    required this.ink,
-    required this.muted,
-    required this.fill,
-    required this.line,
-  });
+/// Real-shaped mail: an Indian electricity bill, a dispatch notice, a renewal
+/// receipt — and the three kinds of thing that make up most of an inbox. Kept
+/// and dropped are interleaved so the sort reads as sorting rather than as
+/// taking the top three.
+const _mail = <_Mail>[
+  (
+    subject: 'Your BESCOM bill for August is ready',
+    icon: CupertinoIcons.doc_text_fill,
+    insight: (title: 'BESCOM', detail: 'Due Tuesday', value: '₹1,840'),
+  ),
+  (subject: 'FLAT 60% OFF — sale ends tonight', icon: null, insight: null),
+  (
+    subject: 'Your order has been dispatched',
+    icon: CupertinoIcons.cube_box_fill,
+    insight: (title: 'Amazon', detail: 'Arrives today', value: 'Track'),
+  ),
+  (subject: 'Weekly digest: 12 stories for you', icon: null, insight: null),
+  (
+    subject: 'Netflix — your plan renews 12 August',
+    icon: CupertinoIcons.arrow_2_circlepath,
+    insight: (title: 'Netflix', detail: 'Renews in 6 days', value: '₹699'),
+  ),
+  (subject: 'Re: Re: Fwd: catch up next week?', icon: null, insight: null),
+];
+
+const _boxHeight = 210.0;
+const _mailPitch = 25.0;
+const _insightHeight = 58.0;
+const _insightGap = 9.0;
+
+/// The mail list, then the same rows sorted into insights.
+///
+/// A `Stack` of positioned rows rather than an animated `Column`: each row keeps
+/// its own slot and moves by translation, so nothing relayouts while the scene
+/// plays. Dropped mail drifts right and fades; kept mail slides into an insight
+/// panel. Two directions, so the sorting is legible as sorting.
+class _SortingInbox extends StatelessWidget {
+  final double t;
+
+  const _SortingInbox({required this.t});
 
   @override
   Widget build(BuildContext context) {
-    return CustomPaint(
-      painter: _CollapsePainter(
-        t: t,
-        noise: noise,
-        ink: ink,
-        muted: muted,
-        fill: fill,
-        line: line,
-      ),
-      // A painter with no child still needs a size; the parent SizedBox gives
-      // it one, and `willChange` tells the engine not to cache the layer.
-      size: Size.infinite,
+    final mailBlock = _mail.length * _mailPitch;
+    final mailTop = (_boxHeight - mailBlock) / 2;
+
+    final keptCount = [for (final m in _mail) if (m.insight != null) m].length;
+    final insightBlock =
+        keptCount * _insightHeight + (keptCount - 1) * _insightGap;
+    final insightTop = (_boxHeight - insightBlock) / 2;
+
+    var keptIndex = 0;
+
+    return Stack(
+      clipBehavior: Clip.none,
+      children: [
+        for (var i = 0; i < _mail.length; i++)
+          _SortedRow(
+            t: t,
+            mail: _mail[i],
+            // Arrival cascades top to bottom and finishes before the sort
+            // starts, so the user reads the inbox before it changes.
+            arriveFrom: i * 0.055,
+            fromTop: mailTop + i * _mailPitch,
+            toTop: _mail[i].insight == null
+                ? mailTop + i * _mailPitch
+                : insightTop + (keptIndex++) * (_insightHeight + _insightGap),
+          ),
+      ],
     );
   }
 }
 
-/// Draws the whole collapse in one painter.
-///
-/// One `CustomPaint` rather than ~11 animated widgets: eleven `Transform` and
-/// `Opacity` widgets would mean eleven layers and up to eleven `saveLayer`
-/// calls per frame, where this is a single display list with no layers at all.
-/// That difference is the whole reason this scene is smooth.
-class _CollapsePainter extends CustomPainter {
+class _SortedRow extends StatelessWidget {
   final double t;
-  final List<double> noise;
-  final Color ink;
-  final Color muted;
-  final Color fill;
-  final Color line;
+  final _Mail mail;
+  final double arriveFrom;
+  final double fromTop;
+  final double toTop;
 
-  _CollapsePainter({
+  const _SortedRow({
     required this.t,
-    required this.noise,
-    required this.ink,
-    required this.muted,
-    required this.fill,
-    required this.line,
+    required this.mail,
+    required this.arriveFrom,
+    required this.fromTop,
+    required this.toTop,
   });
 
   @override
-  void paint(Canvas canvas, Size size) {
-    // Phase 1 (0.00–0.42): bars cascade in from the right.
-    // Phase 2 (0.38–0.72): bars converge toward the centre and fade.
-    // Phase 3 (0.60–1.00): three insight rows rise out of the collapse.
-    final arrive = Curves.easeOutCubic.transform(_slice(t, 0.0, 0.42));
-    final collapse = Curves.easeInOutCubic.transform(_slice(t, 0.38, 0.72));
-    final emerge = Curves.easeOutCubic.transform(_slice(t, 0.60, 1.0));
+  Widget build(BuildContext context) {
+    // Arrive (staggered, each row over 0.34 of the timeline), then sort from
+    // 0.50 once every line has landed.
+    final arrive = Curves.easeOutCubic
+        .transform(_slice(t, arriveFrom, arriveFrom + 0.34));
+    final sort = Curves.easeInOutCubic.transform(_slice(t, 0.5, 1.0));
+    final dropped = mail.insight == null;
 
-    const barHeight = 9.0;
-    const barGap = 7.0;
-    final noiseBlock = noise.length * (barHeight + barGap);
-    final noiseTop = (size.height - noiseBlock) / 2;
-    final centre = size.height / 2;
+    final top = fromTop + (toTop - fromTop) * sort;
+    // Dropped mail leaves to the right — the direction it arrived from, so it
+    // reads as handed back rather than deleted. NoMail never deletes mail, and
+    // the animation should not imply otherwise.
+    final dx = (1 - arrive) * 34 + (dropped ? sort * 46 : 0);
+    final opacity =
+        dropped ? (arrive * (1 - sort)).clamp(0.0, 1.0) : arrive.clamp(0.0, 1.0);
 
-    final barPaint = Paint()..style = PaintingStyle.fill;
+    if (opacity <= 0.01) return const SizedBox.shrink();
 
-    for (var i = 0; i < noise.length; i++) {
-      final row = noiseTop + i * (barHeight + barGap);
-      // Each bar has its own slice of the cascade, so they arrive in sequence.
-      final own = _slice(arrive, i / (noise.length * 1.6), 1.0);
-      // Converge on the centre line, then fade out.
-      final y = row + (centre - row) * collapse;
-      final width = size.width * noise[i] * own * (1 - collapse * 0.35);
-      final alpha = own * (1 - collapse);
-      if (alpha <= 0.01 || width <= 0.5) continue;
-
-      barPaint.color = muted.withValues(alpha: alpha * 0.55);
-      canvas.drawRRect(
-        RRect.fromRectAndRadius(
-          Rect.fromLTWH(0, y, width, barHeight),
-          const Radius.circular(4.5),
+    return Positioned(
+      top: top,
+      left: 0,
+      right: 0,
+      child: Opacity(
+        opacity: opacity,
+        child: Transform.translate(
+          offset: Offset(dx, 0),
+          child: dropped
+              ? _MailLine(subject: mail.subject)
+              // Cross-fade in place: the same row is the mail line and then the
+              // insight. That is the claim — nothing new appeared, the mail was
+              // understood.
+              : Stack(
+                  alignment: Alignment.centerLeft,
+                  children: [
+                    Opacity(
+                      opacity: (1 - sort * 1.7).clamp(0.0, 1.0),
+                      child: _MailLine(subject: mail.subject),
+                    ),
+                    Opacity(
+                      opacity: _slice(sort, 0.3, 1.0),
+                      child: _InsightRow(mail: mail),
+                    ),
+                  ],
+                ),
         ),
-        barPaint,
-      );
-    }
-
-    if (emerge <= 0.01) return;
-
-    // Three resolved insights. Widths are full; these are the point.
-    const rowHeight = 46.0;
-    const rowGap = 12.0;
-    final rowsBlock = 3 * rowHeight + 2 * rowGap;
-    final rowsTop = (size.height - rowsBlock) / 2;
-
-    for (var i = 0; i < 3; i++) {
-      final own = Curves.easeOutCubic.transform(_slice(emerge, i * 0.18, 1.0));
-      if (own <= 0.01) continue;
-      final y = rowsTop + i * (rowHeight + rowGap) + (1 - own) * 16;
-      final rect = Rect.fromLTWH(0, y, size.width, rowHeight);
-      final rrect =
-          RRect.fromRectAndRadius(rect, const Radius.circular(13));
-
-      canvas.drawRRect(rrect, Paint()..color = fill.withValues(alpha: own));
-      canvas.drawRRect(
-        rrect,
-        Paint()
-          ..color = line.withValues(alpha: own)
-          ..style = PaintingStyle.stroke
-          ..strokeWidth = 1,
-      );
-
-      // A leading dot for the icon, a title bar, and a trailing value bar —
-      // the silhouette of the app's own rows, without pretending to be text.
-      final glyph = Paint()..color = ink.withValues(alpha: own * 0.85);
-      canvas.drawCircle(Offset(rect.left + 25, rect.center.dy), 8, glyph);
-      canvas.drawRRect(
-        RRect.fromRectAndRadius(
-          Rect.fromLTWH(rect.left + 46, rect.center.dy - 7, size.width * 0.34, 7),
-          const Radius.circular(3.5),
-        ),
-        glyph,
-      );
-      canvas.drawRRect(
-        RRect.fromRectAndRadius(
-          Rect.fromLTWH(rect.left + 46, rect.center.dy + 3, size.width * 0.22, 5),
-          const Radius.circular(2.5),
-        ),
-        Paint()..color = muted.withValues(alpha: own * 0.7),
-      );
-      canvas.drawRRect(
-        RRect.fromRectAndRadius(
-          Rect.fromLTWH(rect.right - 62, rect.center.dy - 5, 46, 10),
-          const Radius.circular(5),
-        ),
-        glyph,
-      );
-    }
+      ),
+    );
   }
+}
+
+/// A line in a mail list: an envelope glyph and a subject, nothing else.
+class _MailLine extends StatelessWidget {
+  final String subject;
+
+  const _MailLine({required this.subject});
 
   @override
-  bool shouldRepaint(_CollapsePainter old) => old.t != t || old.ink != ink;
+  Widget build(BuildContext context) {
+    final muted = Palette.tertiaryLabel(context);
+    return SizedBox(
+      height: _mailPitch,
+      child: Row(
+        children: [
+          Icon(CupertinoIcons.envelope, size: 13, color: muted),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              subject,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(fontSize: 13.5, color: muted),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// What the mail became: an icon, a name, when it matters, and its value.
+///
+/// Deliberately the same silhouette as a real row on the Today tab, so the first
+/// screen after onboarding is a shape the user already recognises.
+class _InsightRow extends StatelessWidget {
+  final _Mail mail;
+
+  const _InsightRow({required this.mail});
+
+  @override
+  Widget build(BuildContext context) {
+    final insight = mail.insight!;
+    final ink = Palette.label(context);
+    final muted = Palette.secondaryLabel(context);
+    // Beyond about double size, a currency figure will not share a 375pt row
+    // with a two-line title — the value moves under the detail instead. Reflow
+    // rather than clamp: shrinking the text to make the design fit is the one
+    // thing an accessibility size must never be answered with.
+    final stacked = MediaQuery.textScalerOf(context).scale(15) > 26;
+
+    final value = Text(
+      insight.value,
+      maxLines: 1,
+      overflow: TextOverflow.ellipsis,
+      style: TextStyle(
+        fontSize: 15,
+        fontWeight: FontWeight.w600,
+        letterSpacing: -0.3,
+        color: ink,
+        fontFeatures: const [FontFeature.tabularFigures()],
+      ),
+    );
+
+    return _Panel(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
+      child: Row(
+        children: [
+          Icon(mail.icon, size: 18, color: ink),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  insight.title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w600,
+                    letterSpacing: -0.3,
+                    color: ink,
+                  ),
+                ),
+                const SizedBox(height: 1),
+                Text(
+                  insight.detail,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(fontSize: 13, color: muted),
+                ),
+                if (stacked) ...[
+                  const SizedBox(height: 3),
+                  value,
+                ],
+              ],
+            ),
+          ),
+          if (!stacked) ...[
+            const SizedBox(width: 10),
+            // Flexible, not a bare child: a non-flex trailing child claims its
+            // full intrinsic width first, which is exactly how GlassRow used to
+            // overflow every screen in the app.
+            Flexible(child: value),
+          ],
+        ],
+      ),
+    );
+  }
 }
 
 /// Maps [value] onto the sub-range [from]..[to], clamped to 0..1.
