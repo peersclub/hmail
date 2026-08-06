@@ -203,6 +203,44 @@ List<Insight> snapshotToInsights(InsightSnapshot s) {
     ));
   }
 
+  // Learned use-cases — the shapes the app taught itself. Weighted by what the
+  // recipe actually managed to extract rather than by a flat constant: a dated
+  // demand for money is a real errand and outranks a subscription, while a
+  // recognised-but-featureless notice sits below one. Overclaiming here would
+  // put the app's least certain output above its most certain.
+  for (final l in s.activeLearned) {
+    final hasMoney = l.amount != null;
+    final hasDate = l.deadline != null;
+    out.add(Insight(
+      id: 'learned:${l.dedupeKey}',
+      // Money if it found money, else a general-life bucket. Deliberately not
+      // `security`, which is where these used to land as attention cards — a
+      // school fee circular is not a security alert.
+      domain: hasMoney ? InsightDomain.money : InsightDomain.personal,
+      title: l.label,
+      subtitle: l.summary,
+      trailing: hasMoney ? formatMoney(l.amount!, l.currency) : null,
+      caption: hasDate
+          ? (l.isOverdue ? 'Overdue' : 'By ${formatDay(l.deadline!)}')
+          : null,
+      anchorDate: l.deadline,
+      overdue: l.isOverdue,
+      icon: hasMoney
+          ? CupertinoIcons.doc_plaintext
+          : CupertinoIcons.lightbulb,
+      brandKey: l.label,
+      weight: switch ((hasMoney, hasDate)) {
+        (true, true) => 74,
+        (true, false) => 62,
+        (false, true) => 56,
+        (false, false) => 30,
+      },
+      actions: actionsForLearned(l),
+      ignoreKind: IgnoreKind.learned,
+      ignoreSubject: l.label,
+    ));
+  }
+
   for (final f in s.recentFeed) {
     out.add(Insight(
       id: 'feed:${f.sourceEmailId}',

@@ -50,9 +50,9 @@ void main() {
   setUp(() => SharedPreferences.setMockInitialValues({}));
 
   group('scan scope drives the Gmail queries', () {
-    test('all domains on produces six queries', () {
+    test('all domains on produces seven queries', () {
       final queries = GmailSource.queriesFor(const ScanSettings());
-      expect(queries, hasLength(6),
+      expect(queries, hasLength(7),
           reason: 'money(2)+deliveries+events+reads+travel');
     });
 
@@ -62,7 +62,8 @@ void main() {
             scanDeliveries: false,
             scanEvents: false,
             scanReads: false,
-            scanTravel: false),
+            scanTravel: false,
+        scanDiscovery: false),
       );
       expect(queries, hasLength(2), reason: 'money is receipts + bills');
       expect(queries.any((q) => q.contains('shipped')), isFalse);
@@ -97,6 +98,7 @@ void main() {
         scanEvents: false,
         scanReads: false,
         scanTravel: false,
+        scanDiscovery: false,
       ));
       expect(queries, isEmpty);
     });
@@ -195,7 +197,7 @@ void main() {
       await tester.scrollUntilVisible(find.text('Export Insights'), 200);
       expect(find.text('Export Insights'), findsOneWidget);
       // The scan scope is described in place, not hidden behind the tap.
-      expect(find.textContaining('up to 150 emails'), findsOneWidget);
+      expect(find.textContaining('up to 175 emails'), findsOneWidget);
     });
 
     testWidgets('Scan screen shows the estimate and toggles', (tester) async {
@@ -226,8 +228,9 @@ void main() {
       // The hero card scrolls out of the lazy list when we reach the switch,
       // so assert the recomputed value rather than the rendered glyph (the
       // previous test already proves the estimate renders).
-      expect(controller.settings.estimatedMaxEmails, 125,
-          reason: 'money(2) + deliveries + reads + travel, x 25 per query');
+      expect(controller.settings.estimatedMaxEmails, 150,
+          reason: 'money(2) + deliveries + reads + travel + discovery, '
+              'x 25 per query');
     });
 
     testWidgets('Processing screen lists the pipeline and audit',

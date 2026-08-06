@@ -33,7 +33,12 @@ enum IgnoreKind {
   payment('payment alert'),
   returnItem('return'),
   feed('read'),
-  attention('alert');
+  attention('alert'),
+
+  /// Cards from a recipe the app wrote for itself. Correcting one is a
+  /// stronger signal than the others: it says the recipe is wrong, not just
+  /// that this sender is unwanted — see the Knowledge screen.
+  learned('card');
 
   const IgnoreKind(this.noun);
 
@@ -82,6 +87,7 @@ class IgnoreRule {
         IgnoreKind.returnItem => 'Returns',
         IgnoreKind.feed => 'Reads',
         IgnoreKind.attention => 'Alerts',
+        IgnoreKind.learned => 'Cards',
       };
 
   Map<String, dynamic> toJson() => {
@@ -205,6 +211,10 @@ InsightSnapshot applyIgnores(InsightSnapshot snapshot, IgnoreList ignores) {
     priceChanges: [
       for (final c in snapshot.priceChanges)
         if (keep(IgnoreKind.subscription, c.service)) c,
+    ],
+    learned: [
+      for (final l in snapshot.learned)
+        if (keep(IgnoreKind.learned, l.label)) l,
     ],
   );
 }

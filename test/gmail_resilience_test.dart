@@ -33,7 +33,9 @@ class FakeGmailClient extends http.BaseClient {
     final path = request.url.path;
     final body = path.endsWith('/messages')
         ? jsonEncode({
-            'messages': [for (final id in _messageIds) {'id': id}],
+            'messages': [
+              for (final id in _messageIds) {'id': id},
+            ],
           })
         : jsonEncode({
             'id': path.split('/').last,
@@ -61,17 +63,18 @@ class FakeGmailClient extends http.BaseClient {
 }
 
 GmailSource sourceWith(FakeGmailClient client) => GmailSource(
-      GmailApi(client),
-      // Exactly one query keeps the call counting easy to reason about, so
-      // every domain except packages is switched off explicitly.
-      settings: const ScanSettings(
-        scanMoney: false,
-        scanDeliveries: true,
-        scanEvents: false,
-        scanReads: false,
-        scanTravel: false,
-      ),
-    );
+  GmailApi(client),
+  // Exactly one query keeps the call counting easy to reason about, so
+  // every domain except packages is switched off explicitly.
+  settings: const ScanSettings(
+    scanMoney: false,
+    scanDeliveries: true,
+    scanEvents: false,
+    scanReads: false,
+    scanTravel: false,
+    scanDiscovery: false,
+  ),
+);
 
 void main() {
   test('a healthy scan returns every message', () async {
@@ -86,9 +89,10 @@ void main() {
 
   test('one dead message does not abort the scan', () async {
     // Call 0 lists; calls 1..3 fetch messages. Kill the second fetch.
-    final client = FakeGmailClient((index, _) => index == 2
-        ? http.ClientException('Bad file descriptor')
-        : null);
+    final client = FakeGmailClient(
+      (index, _) =>
+          index == 2 ? http.ClientException('Bad file descriptor') : null,
+    );
     final source = sourceWith(client);
 
     final emails = await source.fetchCandidates();
@@ -98,28 +102,31 @@ void main() {
   });
 
   test('a dead query is skipped rather than fatal', () async {
-    final client = FakeGmailClient((index, url) =>
-        url.path.endsWith('/messages') && !url.path.contains('/messages/')
-            ? http.ClientException('Bad file descriptor')
-            : null);
+    final client = FakeGmailClient(
+      (index, url) =>
+          url.path.endsWith('/messages') && !url.path.contains('/messages/')
+          ? http.ClientException('Bad file descriptor')
+          : null,
+    );
     final source = sourceWith(client);
 
     // The only query fails, so nothing is fetched at all — that is a broken
     // sync, not a partial one, and must surface.
-    await expectLater(
-      source.fetchCandidates(),
-      throwsA(isA<StateError>()),
-    );
+    await expectLater(source.fetchCandidates(), throwsA(isA<StateError>()));
   });
 
   test('total failure surfaces instead of reporting an empty inbox', () async {
-    final client =
-        FakeGmailClient((_, __) => http.ClientException('Bad file descriptor'));
+    final client = FakeGmailClient(
+      (_, __) => http.ClientException('Bad file descriptor'),
+    );
 
     await expectLater(
       sourceWith(client).fetchCandidates(),
-      throwsA(predicate((e) =>
-          e is StateError && e.message.contains('Gmail unreachable'))),
+      throwsA(
+        predicate(
+          (e) => e is StateError && e.message.contains('Gmail unreachable'),
+        ),
+      ),
     );
   });
 
@@ -140,23 +147,27 @@ void main() {
   });
 
   group('live progress', () {
-    test('reports the query it is searching and messages as they arrive',
-        () async {
-      final client = FakeGmailClient((_, __) => null);
-      final details = <String>[];
+    test(
+      'reports the query it is searching and messages as they arrive',
+      () async {
+        final client = FakeGmailClient((_, __) => null);
+        final details = <String>[];
 
-      await sourceWith(client).fetchCandidates(onProgress: details.add);
+        await sourceWith(client).fetchCandidates(onProgress: details.add);
 
-      expect(details.first, 'Searching packages (1 of 1)');
-      expect(details.last, contains('Reading packages'));
-      expect(details.last, contains('3 of 3'));
-    });
+        expect(details.first, 'Searching packages (1 of 1)');
+        expect(details.last, contains('Reading packages'));
+        expect(details.last, contains('3 of 3'));
+      },
+    );
 
     test('a failed search says so rather than going silent', () async {
-      final client = FakeGmailClient((index, url) =>
-          url.path.endsWith('/messages') && !url.path.contains('/messages/')
-              ? http.ClientException('Bad file descriptor')
-              : null);
+      final client = FakeGmailClient(
+        (index, url) =>
+            url.path.endsWith('/messages') && !url.path.contains('/messages/')
+            ? http.ClientException('Bad file descriptor')
+            : null,
+      );
       final details = <String>[];
 
       await expectLater(
@@ -178,6 +189,7 @@ void main() {
           scanEvents: false,
           scanReads: false,
           scanTravel: false,
+          scanDiscovery: false,
         ),
       ).fetchCandidates(onProgress: details.add);
 

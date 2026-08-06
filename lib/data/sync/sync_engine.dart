@@ -20,10 +20,17 @@ class SyncEngine {
   final InsightAi ai;
   final InsightStore store;
 
+  /// Emails of the accounts this run is reading, in order. Stored beside the
+  /// snapshot so a later sign-in can tell whose data it is and what the
+  /// `a<N>:` prefixes in it point at — see `domain/account_scope.dart`. Empty
+  /// for demo mode, whose fixtures belong to nobody.
+  final List<String> accounts;
+
   const SyncEngine({
     required this.source,
     required this.ai,
     required this.store,
+    this.accounts = const [],
   });
 
   /// Runs the pipeline, reporting progress through [onStage] so Settings can
@@ -85,6 +92,7 @@ class SyncEngine {
       payments: extracted.payments,
       returns: extracted.returns,
       feed: extracted.feed,
+      learned: learned.learned,
       priceChanges: priceChanges,
       lastSyncedAt: DateTime.now(),
       emailsScanned: emails.length,
@@ -169,7 +177,7 @@ class SyncEngine {
 
     onStage?.call(SyncStage.saving);
     onDetail?.call('Saving');
-    await store.save(snapshot);
+    await store.save(snapshot, accounts: accounts);
 
     clock.stop();
     onStage?.call(SyncStage.done);
@@ -221,7 +229,7 @@ class SyncEngine {
       brief: aiResult.brief ?? buildRuleBrief(snapshot),
     );
 
-    await store.save(snapshot);
+    await store.save(snapshot, accounts: accounts);
     return snapshot;
   }
 }
@@ -278,6 +286,17 @@ InsightSnapshot applyVerdicts(
     returns: [
       for (final r in snapshot.returns)
         if (kept(r.sourceEmailId)) r,
+    ],
+    // Learned cards are the app's least certain output, so the audit matters
+    // most here: a recipe that fired on the wrong mail should have its card
+    // dropped, and a mangled label corrected, exactly like a bill's.
+    learned: [
+      for (final l in snapshot.learned)
+        if (kept(l.sourceEmailId))
+          switch (newName(l.sourceEmailId)) {
+            final String name => l.withLabel(name),
+            null => l,
+          },
     ],
     // A price change is only as real as the subscription it was measured on:
     // if the audit threw that email out, the "hike" was a misread amount, and

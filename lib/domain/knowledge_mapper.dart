@@ -45,6 +45,7 @@ class MappedKnowledge {
   final List<Bill> bills;
   final List<Delivery> deliveries;
   final List<EventItem> events;
+  final List<LearnedItem> learned;
   final List<AttentionItem> attention;
 
   const MappedKnowledge({
@@ -52,6 +53,7 @@ class MappedKnowledge {
     this.bills = const [],
     this.deliveries = const [],
     this.events = const [],
+    this.learned = const [],
     this.attention = const [],
   });
 
@@ -60,6 +62,7 @@ class MappedKnowledge {
       bills.isEmpty &&
       deliveries.isEmpty &&
       events.isEmpty &&
+      learned.isEmpty &&
       attention.isEmpty;
 
   int get total =>
@@ -67,6 +70,7 @@ class MappedKnowledge {
       bills.length +
       deliveries.length +
       events.length +
+      learned.length +
       attention.length;
 }
 
@@ -80,6 +84,7 @@ MappedKnowledge mapKnowledge(List<(EmailMeta, KnowledgeMatch)> matches) {
   final bills = <Bill>[];
   final deliveries = <Delivery>[];
   final events = <EventItem>[];
+  final learned = <LearnedItem>[];
   final attention = <AttentionItem>[];
 
   for (final (email, match) in matches) {
@@ -154,8 +159,23 @@ MappedKnowledge mapKnowledge(List<(EmailMeta, KnowledgeMatch)> matches) {
           ));
         }
 
+      // A recipe for something the app was never taught to model — a school
+      // fee circular, an insurance renewal, a visa appointment. It keeps its
+      // own amount and its own deadline instead of being flattened into an
+      // attention card dated by when the email happened to arrive.
       case ProducesKind.generic:
-        asAttention();
+        final money = _learnedMoney(fields);
+        learned.add(LearnedItem(
+          label: label,
+          typeId: match.type.id,
+          summary: match.subtitle ?? email.subject,
+          amount: money?.amount,
+          currency: money?.currency ?? 'INR',
+          deadline: _learnedDate(fields, email),
+          url: uri?.toString(),
+          lastSeen: email.date,
+          sourceEmailId: email.id,
+        ));
     }
   }
 
@@ -164,6 +184,7 @@ MappedKnowledge mapKnowledge(List<(EmailMeta, KnowledgeMatch)> matches) {
     bills: bills,
     deliveries: deliveries,
     events: events,
+    learned: learned,
     attention: attention,
   );
 }

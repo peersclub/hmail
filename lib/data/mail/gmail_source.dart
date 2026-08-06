@@ -5,7 +5,9 @@ import 'package:http/http.dart' as http;
 
 import '../../domain/models.dart';
 import '../../domain/scan_settings.dart';
+import 'html_text.dart';
 import 'mail_source.dart';
+import 'message_reader.dart';
 
 /// Gmail-as-a-backend: targeted queries, not inbox paging.
 ///
@@ -76,6 +78,24 @@ class GmailSource implements MailSource {
         '{from:substack.com from:youtube.com from:medium.com from:theken.com subject:newsletter subject:"new post" subject:"new episode" subject:uploaded} newer_than:${_clamp(history, 21)}d',
       if (settings.scanTravel)
         '{from:makemytrip.com from:goindigo.in from:cleartrip.com from:irctc.co.in subject:pnr subject:"e-ticket" subject:itinerary subject:"booking confirmed" subject:"boarding pass"} newer_than:${_clamp(history, 120)}d',
+      // Discovery — deliberately last, and deliberately unconstrained by
+      // keywords.
+      //
+      // Every query above searches for words we already thought of, which made
+      // the learner structurally unable to grow: mail that matched no query was
+      // never fetched, so it never became "unclaimed", so no recipe could ever
+      // be written for it. A school fee circular, an insurance renewal, a visa
+      // appointment, a society maintenance demand — all invisible, however
+      // capable the learner was.
+      //
+      // Gmail's own categories carry the exclusions, because they are the one
+      // classifier available for free and on the server: promotions, social and
+      // forums are precisely the mail with no reusable document shape in it.
+      // Running last means dedupe has already banked everything the targeted
+      // queries wanted, so this returns only what nothing else asked for.
+      if (settings.scanDiscovery)
+        '-category:promotions -category:social -category:forums -in:chats '
+            'newer_than:${_clamp(history, 45)}d',
     ];
 
     // Labels track the same conditions, in the same order, as the queries.
@@ -85,6 +105,7 @@ class GmailSource implements MailSource {
       if (settings.scanEvents) 'meetings',
       if (settings.scanReads) 'reads',
       if (settings.scanTravel) 'travel',
+      if (settings.scanDiscovery) 'anything new',
     ];
 
     return [
@@ -258,19 +279,123 @@ class GmailSource implements MailSource {
     );
   }
 
+  /// Length of body text handed to the extractors and the AI prompts.
+  static const _bodyCap = 4000;
+
+  /// The readable text of a message.
+  ///
+  /// Reads `text/plain` when it says something, and `text/html` — flattened by
+  /// [htmlToText] — otherwise. The HTML side is not a fallback for broken
+  /// mail, it is the normal case: `multipart/alternative` senders routinely
+  /// ship an HTML part carrying every amount, date and button, alongside a
+  /// `text/plain` part that is missing or a "view in browser" stub. Reading
+  /// only plain text meant those messages reached the extractors as subject
+  /// plus snippet, with no links at all.
+  ///
+  /// A plain part with no URL loses to an HTML part that has one, because the
+  /// stub case looks exactly like that and the links are the actionable half
+  /// of an insight.
+  ///
+  /// Raw markup must never be returned. It used to be, for single-part
+  /// `text/html` messages: the old `?? payload` fallback decoded the root
+  /// verbatim, so tag names, class attributes and tracking-pixel URLs went
+  /// straight into [EmailMeta.haystack], which every extractor matches
+  /// against.
   String _extractBody(MessagePart? payload) {
     if (payload == null) return '';
-    // Prefer text/plain; fall back to first decodable part; cap length so
-    // giant HTML bodies don't bloat extraction or AI prompts.
-    final plain = _findPart(payload, 'text/plain') ?? payload;
-    final data = plain.body?.data;
+
+    final rawHtml = _decodePart(_findPart(payload, 'text/html'));
+    final html = rawHtml.isEmpty ? '' : htmlToText(rawHtml);
+    var plain = _decodePart(_findPart(payload, 'text/plain'));
+
+    // A single-part message in some other text flavour (text/enriched, a
+    // sender that mislabels its type). Its own data is the only text there
+    // is, so run it through the flattener too: markup in it is unlikely but
+    // free to handle, and stripping tags from tag-free text is a no-op.
+    if (plain.isEmpty && html.isEmpty && (payload.parts ?? const []).isEmpty) {
+      plain = htmlToText(_decodePart(payload));
+    }
+
+    final preferHtml =
+        plain.isEmpty || (!plain.contains('http') && html.contains('http'));
+    final body = preferHtml && html.isNotEmpty ? html : plain;
+
+    return body.length > _bodyCap ? body.substring(0, _bodyCap) : body;
+  }
+
+  /// Longest message we will render. Past this a body is a mailing-list
+  /// digest or a quoted thread hundreds of replies deep; a WebView will chew
+  /// on it for seconds and the user wanted the top of it anyway.
+  static const _readerCap = 400000;
+
+  /// The full body of one message, for the in-app reader.
+  ///
+  /// Deliberately not part of [fetchCandidates]: this returns real HTML, which
+  /// must never reach [EmailMeta] or the extractors — see [_extractBody] for
+  /// what happens when markup lands in the haystack. It exists on its own so
+  /// the reader's needs and extraction's needs can't drift into each other.
+  ///
+  /// Returns null when the message is gone or the account can't be reached;
+  /// the caller shows "couldn't load" rather than an error, because a message
+  /// that vanished between sync and tap is ordinary, not exceptional.
+  Future<MessageBody?> fetchMessageBody(String id) async {
+    final Message message;
+    try {
+      message = await _withRetry(
+          () => api.users.messages.get('me', id, format: 'full'));
+    } catch (_) {
+      return null;
+    }
+
+    String from = '', subject = '';
+    for (final header
+        in message.payload?.headers ?? const <MessagePartHeader>[]) {
+      switch (header.name?.toLowerCase()) {
+        case 'from':
+          from = header.value ?? '';
+        case 'subject':
+          subject = header.value ?? '';
+      }
+    }
+
+    final internalMs = int.tryParse(message.internalDate ?? '');
+    final date = internalMs != null
+        ? DateTime.fromMillisecondsSinceEpoch(internalMs)
+        : DateTime.now();
+
+    final payload = message.payload;
+    if (payload == null) return null;
+
+    var html = _decodePart(_findPart(payload, 'text/html'));
+    final isRichText = html.isNotEmpty;
+    if (!isRichText) {
+      final plain = _decodePart(_findPart(payload, 'text/plain'));
+      // Plain text carries its own line breaks and alignment, so it is
+      // escaped and left alone rather than reflowed as prose.
+      html = plain.isEmpty ? '' : '<pre>${escapeHtml(plain)}</pre>';
+    }
+    if (html.isEmpty) return null;
+    if (html.length > _readerCap) html = html.substring(0, _readerCap);
+
+    return MessageBody(
+      from: from,
+      subject: subject,
+      date: date,
+      html: html,
+      isRichText: isRichText,
+    );
+  }
+
+  /// Decodes a part's base64url payload, or '' for anything unreadable — a
+  /// missing part, a container that holds only children, malformed base64.
+  String _decodePart(MessagePart? part) {
+    final data = part?.body?.data;
     if (data == null) return '';
     try {
-      final decoded = utf8.decode(
-        base64Url.decode(base64Url.normalize(data)),
-        allowMalformed: true,
-      );
-      return decoded.length > 4000 ? decoded.substring(0, 4000) : decoded;
+      return utf8
+          .decode(base64Url.decode(base64Url.normalize(data)),
+              allowMalformed: true)
+          .trim();
     } catch (_) {
       return '';
     }

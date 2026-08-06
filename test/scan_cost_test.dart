@@ -22,7 +22,10 @@ void main() {
     });
 
     test('accepts numbers too', () {
-      final pricing = ModelPricing.fromJson({'prompt': 1e-6, 'completion': 5e-6});
+      final pricing = ModelPricing.fromJson({
+        'prompt': 1e-6,
+        'completion': 5e-6,
+      });
       expect(pricing?.promptUsdPerToken, 1e-6);
     });
 
@@ -75,8 +78,10 @@ void main() {
     });
 
     test('the range is ordered and the low end is genuinely lower', () {
-      final estimate =
-          estimateScanCost(settings: const ScanSettings(), pricing: _haiku);
+      final estimate = estimateScanCost(
+        settings: const ScanSettings(),
+        pricing: _haiku,
+      );
       expect(estimate.hasPrice, isTrue);
       expect(estimate.lowUsd, lessThan(estimate.highUsd!));
       expect(estimate.lowUsd, greaterThan(0));
@@ -85,8 +90,10 @@ void main() {
     test('a Haiku-class scan lands in cents, not dollars', () {
       // Sanity anchor: if a routine scan ever estimates above a dollar, either
       // the coefficients or the prompt caps have drifted badly.
-      final estimate =
-          estimateScanCost(settings: const ScanSettings(), pricing: _haiku);
+      final estimate = estimateScanCost(
+        settings: const ScanSettings(),
+        pricing: _haiku,
+      );
       expect(estimate.highUsd, lessThan(1.0));
     });
 
@@ -109,7 +116,11 @@ void main() {
         pricing: _haiku,
       );
       final fewer = estimateScanCost(
-        settings: const ScanSettings(scanReads: false, scanTravel: false),
+        settings: const ScanSettings(
+          scanReads: false,
+          scanTravel: false,
+          scanDiscovery: false,
+        ),
         pricing: _haiku,
       );
       expect(fewer.emails, lessThan(all.emails));
@@ -121,16 +132,22 @@ void main() {
         promptUsdPerToken: 0.000015,
         completionUsdPerToken: 0.000075,
       );
-      final cheap =
-          estimateScanCost(settings: const ScanSettings(), pricing: _haiku);
-      final dear =
-          estimateScanCost(settings: const ScanSettings(), pricing: opus);
+      final cheap = estimateScanCost(
+        settings: const ScanSettings(),
+        pricing: _haiku,
+      );
+      final dear = estimateScanCost(
+        settings: const ScanSettings(),
+        pricing: opus,
+      );
       expect(dear.highUsd, greaterThan(cheap.highUsd!));
     });
 
     test('skipping the learner lowers the ceiling', () {
-      final withLearner =
-          estimateScanCost(settings: const ScanSettings(), pricing: _haiku);
+      final withLearner = estimateScanCost(
+        settings: const ScanSettings(),
+        pricing: _haiku,
+      );
       final without = estimateScanCost(
         settings: const ScanSettings(),
         pricing: _haiku,
@@ -147,6 +164,7 @@ void main() {
           scanEvents: false,
           scanReads: false,
           scanTravel: false,
+          scanDiscovery: false,
         ),
         pricing: _haiku,
       );
@@ -161,8 +179,10 @@ void main() {
         promptUsdPerToken: 1e-9,
         completionUsdPerToken: 1e-9,
       );
-      final estimate =
-          estimateScanCost(settings: const ScanSettings(), pricing: nearlyFree);
+      final estimate = estimateScanCost(
+        settings: const ScanSettings(),
+        pricing: nearlyFree,
+      );
       expect(estimate.priceLine, 'Under a cent of AI per scan');
       expect(estimate.priceLine, isNot(contains('0.00')));
     });
@@ -172,16 +192,20 @@ void main() {
         promptUsdPerToken: 0.0001,
         completionUsdPerToken: 0.0005,
       );
-      final estimate =
-          estimateScanCost(settings: const ScanSettings(), pricing: dear);
+      final estimate = estimateScanCost(
+        settings: const ScanSettings(),
+        pricing: dear,
+      );
       expect(estimate.priceLine, startsWith('About \$'));
       expect(estimate.priceLine, contains('–'));
       expect(estimate.priceLine, endsWith('per scan'));
     });
 
     test('the row summary carries both scope and cost', () {
-      final estimate =
-          estimateScanCost(settings: const ScanSettings(), pricing: _haiku);
+      final estimate = estimateScanCost(
+        settings: const ScanSettings(),
+        pricing: _haiku,
+      );
       expect(estimate.summary, contains('emails per scan'));
       expect(estimate.summary.toLowerCase(), contains('ai'));
     });

@@ -19,16 +19,51 @@ class InsightAction {
   final Uri uri;
   final ActionKind kind;
 
+  /// The message this action is *about*, prefix and all, when there is one.
+  ///
+  /// Set only by [openEmailAction]. Both URLs above destroy the id into a URL
+  /// string, and the in-app reader needs it back to ask Gmail for the body —
+  /// recovering it by taking the https URL apart again would make the reader
+  /// depend on that URL's shape, which is exactly the coupling that let a
+  /// false claim about universal links survive here for so long.
+  final String? sourceEmailId;
+
   const InsightAction({
     required this.label,
     required this.uri,
     required this.kind,
+    this.sourceEmailId,
   });
 }
 
-/// Deep link into the source message. Gmail registers mail.google.com as a
-/// universal link, so this opens the Gmail app when installed and the web
-/// client otherwise.
+/// Deep link into the source message.
+///
+/// THERE IS NO WORKING HAND-OFF TO THE GMAIL iOS APP. Both mechanisms are
+/// closed, each tested rather than assumed:
+///
+/// 1. Universal link — `mail.google.com` serves no `apple-app-site-association`
+///    naming the Gmail app (verified 2026-08-05: Apple's CDN copy is
+///    `www.google.com`'s, 48 entries, none of them Gmail). So the URL below
+///    opens Safari on iOS however much it looks like an app link. Re-check with
+///    `curl -s https://app-site-association.cdn-apple.com/a/v1/mail.google.com`
+///    before believing otherwise.
+/// 2. Custom scheme — `googlegmail:///cv=<id>/accountId=<N>&create-new-tab`,
+///    the widely-repeated 2013 form, was shipped behind a fallback and tried on
+///    a real device on 2026-08-06. **Gmail opened and rejected it**: "unable to
+///    understand link". Removed. Note the failure mode before reaching for it
+///    again — iOS reported the launch as *successful*, because the scheme was
+///    registered and hand-off is all `UIApplication.open` reports. A fallback
+///    on a false return therefore cannot catch a malformed path, and the user
+///    sees Gmail's own error dialog. Anything reinstated here needs a format
+///    verified on a device first, not a plausible one behind a safety net.
+///
+/// So this URL is the fallback, not the plan: `ui/screens/email_reader_screen`
+/// renders the message in NoMail, and `domain/deep_links.dart` prefers it
+/// whenever a signed-in backend exists to fetch a body with.
+///
+/// On Android the URL below does reach Gmail — `mail.google.com`'s
+/// `assetlinks.json` delegates `handle_all_urls` to `com.google.android.gm`.
+///
 /// Multi-account email ids arrive prefixed `a<N>:<gmailId>` (see
 /// MultiGmailSource). Gmail can't resolve the prefixed form, so the prefix is
 /// stripped here — and repurposed: N is the account's index, which maps to
@@ -47,6 +82,7 @@ InsightAction openEmailAction(String sourceEmailId) {
   return InsightAction(
     label: 'Open email',
     uri: Uri.parse('https://mail.google.com/mail/u/$account/#all/$id'),
+    sourceEmailId: sourceEmailId,
     kind: ActionKind.openEmail,
   );
 }
@@ -201,6 +237,43 @@ List<InsightAction> actionsForPriceChange(
   }
 
   actions.add(openEmailAction(change.sourceEmailId));
+  return actions;
+}
+
+/// Actions for a learned card.
+///
+/// The recipe already built whatever URL it knows — a payment page, a booking
+/// lookup — and that URL is the whole reason the card is worth showing, so it
+/// leads. A dated card also offers a calendar reminder, because the app cannot
+/// promise to chase every learned deadline itself the way it does for bills.
+/// "Open email" is the floor, as everywhere: the source message is the one
+/// action that always works, and for a shape the app only half understands it is
+/// the one the user is most likely to want.
+List<InsightAction> actionsForLearned(LearnedItem item) {
+  final actions = <InsightAction>[];
+
+  final uri = item.url == null ? null : Uri.tryParse(item.url!);
+  if (uri != null) {
+    actions.add(InsightAction(
+      label: item.amount != null ? 'Pay now' : 'Open',
+      uri: uri,
+      // `openLink` rather than `pay`: the recipe's own confidence does not
+      // extend to promising a UPI handoff, and mislabelling the destination is
+      // the thing the destination hints exist to prevent.
+      kind: ActionKind.openLink,
+    ));
+  }
+
+  final deadline = item.deadline;
+  if (deadline != null && !item.isOverdue) {
+    actions.add(InsightAction(
+      label: 'Remind me',
+      uri: _calendarReminderUri(item.label, deadline),
+      kind: ActionKind.remind,
+    ));
+  }
+
+  actions.add(openEmailAction(item.sourceEmailId));
   return actions;
 }
 

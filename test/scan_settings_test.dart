@@ -20,8 +20,13 @@ void main() {
       expect(settings.aiModel, 'anthropic/claude-haiku-4.5');
       expect(settings.briefHour, 8);
       expect(settings.scanReads, isTrue);
-      // 5 Gmail queries x 25.
-      expect(settings.estimatedMaxEmails, 150);
+      // Discovery ships on: it is what lets the app learn use-cases nobody
+      // hardcoded, and an upgrade that left it off would have shipped the
+      // capability switched off.
+      expect(settings.scanDiscovery, isTrue);
+      // 6 Gmail queries x 25 — money is two, then deliveries, events, reads,
+      // travel, discovery.
+      expect(settings.estimatedMaxEmails, 175);
     });
 
     test('option lists match the values the UI offers', () {
@@ -45,8 +50,11 @@ void main() {
     });
 
     test('can turn a domain and AI off without disturbing the rest', () {
-      final updated = const ScanSettings()
-          .copyWith(scanEvents: false, aiEnabled: false, briefHour: 21);
+      final updated = const ScanSettings().copyWith(
+        scanEvents: false,
+        aiEnabled: false,
+        briefHour: 21,
+      );
       expect(updated.scanEvents, isFalse);
       expect(updated.aiEnabled, isFalse);
       expect(updated.briefHour, 21);
@@ -108,10 +116,9 @@ void main() {
 
   group('estimatedMaxEmails', () {
     test('all domains on counts money as two queries', () {
-      expect(
-        const ScanSettings(maxEmailsPerQuery: 50).estimatedMaxEmails,
-        300,
-      );
+      // 7 query slots: money (2) + deliveries + events + reads + travel +
+      // discovery.
+      expect(const ScanSettings(maxEmailsPerQuery: 50).estimatedMaxEmails, 350);
     });
 
     test('only deliveries is a single query', () {
@@ -121,6 +128,7 @@ void main() {
         scanEvents: false,
         scanReads: false,
         scanTravel: false,
+        scanDiscovery: false,
       );
       expect(settings.estimatedMaxEmails, 100);
     });
@@ -132,6 +140,7 @@ void main() {
         scanEvents: false,
         scanReads: false,
         scanTravel: false,
+        scanDiscovery: false,
       );
       expect(money.estimatedMaxEmails, 50);
 
@@ -141,6 +150,7 @@ void main() {
         scanEvents: false,
         scanReads: false,
         scanTravel: false,
+        scanDiscovery: false,
       );
       expect(nothing.estimatedMaxEmails, 0);
     });
@@ -150,7 +160,7 @@ void main() {
     test('all domains on with defaults', () {
       expect(
         const ScanSettings().describeScope,
-        'Money, packages, meetings, reads and trips · up to 150 emails · 1 year of history',
+        'Money, packages, meetings, reads, trips and anything new · up to 175 emails · 1 year of history',
       );
     });
 
@@ -162,6 +172,7 @@ void main() {
         scanEvents: false,
         scanReads: false,
         scanTravel: false,
+        scanDiscovery: false,
       );
       expect(
         settings.describeScope,
@@ -175,6 +186,7 @@ void main() {
         scanMoney: false,
         scanReads: false,
         scanTravel: false,
+        scanDiscovery: false,
       );
       expect(
         settings.describeScope,
@@ -189,6 +201,7 @@ void main() {
         scanEvents: false,
         scanReads: false,
         scanTravel: false,
+        scanDiscovery: false,
       );
       expect(settings.describeScope, 'Nothing selected');
     });
@@ -214,8 +227,9 @@ void main() {
     });
 
     test('corrupt stored JSON falls back to defaults', () async {
-      SharedPreferences.setMockInitialValues(
-          {'scan_settings_v1': 'not json at all'});
+      SharedPreferences.setMockInitialValues({
+        'scan_settings_v1': 'not json at all',
+      });
       expect(await SettingsStore().load(), const ScanSettings());
     });
 

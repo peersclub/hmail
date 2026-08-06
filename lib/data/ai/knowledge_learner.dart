@@ -319,6 +319,14 @@ fields to pull out, and what the user can do with them. The app applies your
 entry deterministically to future emails and will never ask you about this
 shape again, so it must be exact.
 
+The app ships rules for only a handful of document types — receipts, bills,
+shipments, invites, tickets. Everything else in a real mailbox is your job:
+school fees, insurance renewals, society maintenance, EMI reminders, visa and
+passport appointments, medical appointments, tax deadlines, utility connections,
+government notices, gym and club memberships, salary slips, exam schedules.
+Those are the entries worth writing, because nothing else in the app will ever
+handle them.
+
 $buffer
 Rules — an entry breaking any of these is discarded:
 1. "match.senderDomains" is REQUIRED and must contain a fragment of the actual
@@ -338,15 +346,33 @@ Rules — an entry breaking any of these is discarded:
    If you do not know a real URL for this brand, omit the action entirely
    rather than guessing a domain.
 4. "produces" is exactly one of: delivery, bill, subscription, event, generic.
-5. "id" is a lowercase slug (letters, digits, dot, dash, underscore), e.g.
+   Pick the specific one when the document genuinely is that thing. Otherwise
+   pick "generic" — it is a first-class outcome, not a failure: the app renders
+   generic entries as their own cards with their own name, amount and deadline.
+   Do NOT force a school fee demand, an insurance renewal, a visa appointment,
+   a society maintenance notice, an EMI reminder, a tax deadline or a medical
+   appointment into "bill" or "event" because they are nearest. A wrongly typed
+   entry is worse than a generic one.
+5. For a "generic" entry, two field names are load-bearing, so use these exact
+   names whenever the document contains them:
+     - "amount"  — the money owed or paid
+     - "dueDate" — when it must be done by
+   The app reads those two names to show a figure and a deadline, and to rank
+   the card. A generic entry with neither is still accepted, but it can only
+   ever be a name and a link, so it will sit near the bottom of the list.
+6. "id" is a lowercase slug (letters, digits, dot, dash, underscore), e.g.
    "irctc-eticket". Put the single most useful field first in "fields".
-6. If a cluster is marketing, a newsletter, a one-off human email, or anything
+7. "label" is what the user will read on the card, so name the DOCUMENT, not the
+   sender: "School fee demand", "Policy renewal", "Maintenance bill" — not
+   "Notification from ABC Schools". Two to four words, sentence case.
+8. If a cluster is marketing, a newsletter, a one-off human email, or anything
    with no stable extractable value, SKIP IT. Returning fewer entries — or an
    empty list — is always better than guessing.
 
 Set "cluster" to the exact quoted cluster name it describes.
 
-Return ONLY JSON, no prose, no code fence:
+Return ONLY JSON, no prose, no code fence. Two entries shown: a typed one and
+a generic one, which is the more common case.
 {"types": [{
   "cluster": "irctc.co.in",
   "id": "irctc-eticket",
@@ -359,6 +385,20 @@ Return ONLY JSON, no prose, no code fence:
   "actions": [{"label": "Check PNR status",
                "uriTemplate": "https://www.irctc.co.in/online-charts/pnr/{pnr}",
                "kind": "openLink"}]
+}, {
+  "cluster": "greenwoodhigh.edu.in",
+  "id": "greenwood-fee-demand",
+  "label": "School fee demand",
+  "match": {"senderDomains": ["greenwoodhigh.edu.in"],
+            "subjectAny": ["fee"], "bodyAll": []},
+  "produces": "generic",
+  "fields": [{"name": "amount",
+              "pattern": "\u20b9\\s?([0-9][0-9,]*\\.?[0-9]{0,2})",
+              "nearKeyword": "Total payable"},
+             {"name": "dueDate",
+              "pattern": "([0-9]{1,2}\\s+[A-Za-z]{3,9}\\s+[0-9]{4})",
+              "nearKeyword": "last date"}],
+  "actions": []
 }]}
 ''';
   }

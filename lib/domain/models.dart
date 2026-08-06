@@ -720,6 +720,114 @@ class PriceChange {
       );
 }
 
+/// Something NoMail taught itself to recognise, that is none of the shapes it
+/// was born knowing.
+///
+/// The playbook can learn to recognise any recurring document, but until this
+/// existed the app had no way to *represent* one: a learned type that was not a
+/// bill, delivery, subscription or meeting collapsed into an [AttentionItem],
+/// which meant a school fee circular arrived with no amount, no deadline (the
+/// email's own date stood in for one), and the weight and domain of a security
+/// alert. The app could learn a new use-case and then describe it uselessly.
+///
+/// So this is deliberately shaped like "a thing with a name, maybe some money,
+/// maybe a date, and a link" — the least the app can know about a document and
+/// still be helpful. [typeId] points back at the recipe that produced it, so
+/// Settings → Knowledge can explain where the card came from and switch it off.
+class LearnedItem {
+  /// The learned type's human label, e.g. 'Society maintenance'.
+  final String label;
+
+  /// Slug of the [ContentType] that recognised this — the audit trail.
+  final String typeId;
+
+  /// One line of detail, usually the subject or the recipe's own subtitle.
+  final String summary;
+
+  /// Money the recipe found, when it found any.
+  final double? amount;
+  final String currency;
+
+  /// When this actually matters — a due date, an appointment, a deadline. Null
+  /// when the recipe extracted no date, and deliberately *not* defaulted to the
+  /// email's arrival: a wrong deadline is worse than no deadline.
+  final DateTime? deadline;
+
+  /// The best action URL the recipe built, if any.
+  final String? url;
+
+  final DateTime lastSeen;
+  final String sourceEmailId;
+
+  const LearnedItem({
+    required this.label,
+    required this.typeId,
+    required this.summary,
+    this.amount,
+    this.currency = 'INR',
+    this.deadline,
+    this.url,
+    required this.lastSeen,
+    required this.sourceEmailId,
+  });
+
+  /// Past its deadline, when it had one.
+  bool get isOverdue =>
+      deadline != null && deadline!.isBefore(DateTime.now());
+
+  /// Learned items age out faster than bills: the app is less sure what they
+  /// are, so it should be less insistent about keeping them around. A dated
+  /// item survives until a week past its date; an undated one for 30 days.
+  bool get isStale {
+    final now = DateTime.now();
+    final date = deadline;
+    if (date != null) return date.isBefore(now.subtract(const Duration(days: 7)));
+    return lastSeen.isBefore(now.subtract(const Duration(days: 30)));
+  }
+
+  /// One per recipe per source email: the same circular re-read must not
+  /// produce two cards, but two genuine notices from one recipe must.
+  String get dedupeKey => '$typeId|$sourceEmailId';
+
+  LearnedItem withLabel(String name) => LearnedItem(
+        label: name,
+        typeId: typeId,
+        summary: summary,
+        amount: amount,
+        currency: currency,
+        deadline: deadline,
+        url: url,
+        lastSeen: lastSeen,
+        sourceEmailId: sourceEmailId,
+      );
+
+  Map<String, dynamic> toJson() => {
+        'label': label,
+        'typeId': typeId,
+        'summary': summary,
+        'amount': amount,
+        'currency': currency,
+        'deadline': deadline?.toIso8601String(),
+        'url': url,
+        'lastSeen': lastSeen.toIso8601String(),
+        'sourceEmailId': sourceEmailId,
+      };
+
+  factory LearnedItem.fromJson(Map<String, dynamic> json) => LearnedItem(
+        label: json['label'] as String,
+        typeId: json['typeId'] as String? ?? '',
+        summary: json['summary'] as String? ?? '',
+        amount: (json['amount'] as num?)?.toDouble(),
+        currency: json['currency'] as String? ?? 'INR',
+        deadline: json['deadline'] == null
+            ? null
+            : DateTime.tryParse(json['deadline'] as String),
+        url: json['url'] as String?,
+        lastSeen: DateTime.parse(json['lastSeen'] as String),
+        sourceEmailId: json['sourceEmailId'] as String,
+      );
+}
+
 class InsightSnapshot {
   final List<Subscription> subscriptions;
   final List<Bill> bills;
@@ -730,6 +838,9 @@ class InsightSnapshot {
   final List<PaymentAlert> payments;
   final List<ReturnItem> returns;
   final List<PriceChange> priceChanges;
+
+  /// Insights from recipes the app wrote for itself — see [LearnedItem].
+  final List<LearnedItem> learned;
   final List<AttentionItem> attention;
   final DailyBrief? brief;
   final DateTime? lastSyncedAt;
@@ -745,6 +856,7 @@ class InsightSnapshot {
     this.payments = const [],
     this.returns = const [],
     this.priceChanges = const [],
+    this.learned = const [],
     this.attention = const [],
     this.brief,
     this.lastSyncedAt,
@@ -760,6 +872,7 @@ class InsightSnapshot {
       travel.isEmpty &&
       payments.isEmpty &&
       returns.isEmpty &&
+      learned.isEmpty &&
       attention.isEmpty;
 
   /// Content from the last two weeks, newest first — the reading queue.
@@ -810,6 +923,18 @@ class InsightSnapshot {
         ..sort((a, b) =>
             b.monthlyDelta.abs().compareTo(a.monthlyDelta.abs()));
 
+  /// Learned items still worth showing: overdue and dated first, then the
+  /// undated ones by how recently they arrived.
+  List<LearnedItem> get activeLearned =>
+      learned.where((l) => !l.isStale).toList()
+        ..sort((a, b) {
+          final ad = a.deadline, bd = b.deadline;
+          if (ad != null && bd != null) return ad.compareTo(bd);
+          if (ad != null) return -1;
+          if (bd != null) return 1;
+          return b.lastSeen.compareTo(a.lastSeen);
+        });
+
   List<ReturnItem> get openReturns =>
       returns.where((r) => !r.isStale).toList()
         ..sort((a, b) => a.deadline.compareTo(b.deadline));
@@ -832,6 +957,7 @@ class InsightSnapshot {
     List<PaymentAlert>? payments,
     List<ReturnItem>? returns,
     List<PriceChange>? priceChanges,
+    List<LearnedItem>? learned,
     List<AttentionItem>? attention,
     DailyBrief? brief,
     DateTime? lastSyncedAt,
@@ -847,6 +973,7 @@ class InsightSnapshot {
         payments: payments ?? this.payments,
         returns: returns ?? this.returns,
         priceChanges: priceChanges ?? this.priceChanges,
+        learned: learned ?? this.learned,
         attention: attention ?? this.attention,
         brief: brief ?? this.brief,
         lastSyncedAt: lastSyncedAt ?? this.lastSyncedAt,
@@ -863,6 +990,7 @@ class InsightSnapshot {
         'payments': payments.map((p) => p.toJson()).toList(),
         'returns': returns.map((r) => r.toJson()).toList(),
         'priceChanges': priceChanges.map((c) => c.toJson()).toList(),
+        'learned': learned.map((l) => l.toJson()).toList(),
         'attention': attention.map((a) => a.toJson()).toList(),
         'brief': brief?.toJson(),
         'lastSyncedAt': lastSyncedAt?.toIso8601String(),
@@ -894,6 +1022,9 @@ class InsightSnapshot {
             .toList(),
         returns: ((json['returns'] ?? []) as List)
             .map((e) => ReturnItem.fromJson(e as Map<String, dynamic>))
+            .toList(),
+        learned: ((json['learned'] ?? []) as List)
+            .map((e) => LearnedItem.fromJson(e as Map<String, dynamic>))
             .toList(),
         priceChanges: ((json['priceChanges'] ?? []) as List)
             .map((e) => PriceChange.fromJson(e as Map<String, dynamic>))
