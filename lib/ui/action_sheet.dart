@@ -14,6 +14,7 @@ import '../core/brand_icons.dart';
 import '../core/host_routing.dart';
 import '../core/installed_apps.dart';
 import '../core/palette.dart';
+import '../data/mail/message_reader.dart';
 import '../domain/actions.dart';
 import '../domain/deep_links.dart';
 import '../domain/link_feedback.dart';
@@ -48,7 +49,15 @@ Future<void> showInsightActions(
 
   final plans = {
     for (final action in actions)
-      action: planFor(action, installed, externalHosts: externalHosts),
+      action: planFor(
+        action,
+        installed,
+        externalHosts: externalHosts,
+        // Demo mode and the moments before sign-in have no backend to fetch a
+        // body from, so "Open email" falls back to the old web hand-off
+        // rather than opening a reader that could only say "couldn't load".
+        canReadEmail: messageReader.isAvailable,
+      ),
   };
 
   // One action normally means "just do it" — but not when there's a correction
@@ -121,6 +130,13 @@ Future<void> showInsightActions(
         ),
       LinkOpenMode.inAppWebView => (
           icon: CupertinoIcons.globe,
+          label: 'in NoMail',
+        ),
+      // An envelope rather than the globe: this is not a web page we happen
+      // to be showing, it is the message itself, and the difference is what
+      // the user is choosing between.
+      LinkOpenMode.emailReader => (
+          icon: CupertinoIcons.envelope,
           label: 'in NoMail',
         ),
       // `destination` here is either a named handler ("your UPI app") or the

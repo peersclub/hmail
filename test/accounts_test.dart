@@ -72,7 +72,11 @@ void main() {
           reason: 'the removal must persist, or it resurrects on relaunch');
     });
 
-    test('signOut clears the remembered accounts too', () async {
+    test('signOut keeps the remembered accounts on disk', () async {
+      // Sign-out ends the session; it does not erase the device. Forgetting
+      // the account list here is what used to make signing back in a
+      // from-scratch rescan — and a rescan cannot recover what the scan
+      // windows exclude, so it was real data loss dressed up as a refresh.
       await AccountsStore().save([
         (email: 'personal@gmail.com', name: 'Personal', photoUrl: null),
       ]);
@@ -80,8 +84,24 @@ void main() {
       await app.init();
       await app.signOut();
 
-      expect(app.accounts, isEmpty);
+      expect(await AccountsStore().load(), hasLength(1),
+          reason: 'the account is remembered so it can be reconnected');
+    });
+
+    test('deleteLocalData is the one that erases, and it signs out too',
+        () async {
+      // The destructive intent, now explicit and separate. Mail is untouched;
+      // this only removes the derived copy.
+      await AccountsStore().save([
+        (email: 'personal@gmail.com', name: 'Personal', photoUrl: null),
+      ]);
+      final app = AppController();
+      await app.init();
+      await app.deleteLocalData();
+
       expect(await AccountsStore().load(), isEmpty);
+      expect(app.accounts, isEmpty);
+      expect(app.snapshot.isEmpty, isTrue);
     });
   });
 

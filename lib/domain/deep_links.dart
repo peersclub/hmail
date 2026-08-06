@@ -33,6 +33,18 @@ enum LinkOpenMode {
   /// Not ours to render: a non-http scheme, or a page that needs the
   /// system's logged-in browser.
   systemHandoff,
+
+  /// The source message, rendered from a fresh fetch inside NoMail.
+  ///
+  /// The exception that proves the WebView rule above: this is the one page we
+  /// can show behind a login, because we are not loading a page at all — the
+  /// body arrives over the authenticated Gmail API and is handed to the
+  /// WebView as a string. No navigation, so no cookie jar to be empty.
+  ///
+  /// It exists because "Open email" has no working hand-off on iOS at all:
+  /// mail.google.com claims no universal link for the Gmail app, so the https
+  /// URL reaches Safari — a different session, frequently signed out.
+  emailReader,
 }
 
 class LinkPlan {
@@ -57,6 +69,7 @@ class LinkPlan {
         LinkOpenMode.nativeApp => destination,
         LinkOpenMode.inAppWebView => 'in NoMail',
         LinkOpenMode.systemHandoff => destination,
+        LinkOpenMode.emailReader => 'in NoMail',
       };
 }
 
@@ -128,12 +141,36 @@ bool _isAuthGated(String host) {
 /// whose links must be handed to iOS so universal links can reach an app the
 /// probe registry doesn't know about (registry detection is capped at 50
 /// schemes by iOS — memory is the layer that scales past it).
+/// [canReadEmail] is [MessageReader.isAvailable] — whether a signed-in backend
+/// exists to fetch a message body with. It is a parameter rather than a lookup
+/// so this file stays pure and the branch stays testable both ways.
 LinkPlan planFor(
   InsightAction action,
   Set<String> installed, {
   Set<String> externalHosts = const {},
+  bool canReadEmail = false,
 }) {
   final uri = action.uri;
+
+  // "Open email" reads the message here, ahead of every other rule including
+  // the installed-app one.
+  //
+  // Not a preference for our own UI: it is the only branch that reliably ends
+  // with the user looking at their email. Safari is a different session and
+  // often signed out; the Gmail app has no documented message URL, so that
+  // hand-off is a guess that fails silently when wrong. The reader always
+  // works, needs no session, and keeps Gmail one tap away in its nav bar — so
+  // nothing is lost by preferring it, and the tap now does the same thing on
+  // every device instead of depending on what happens to be installed.
+  if (action.kind == ActionKind.openEmail &&
+      canReadEmail &&
+      action.sourceEmailId != null) {
+    return LinkPlan(
+      uri: uri,
+      mode: LinkOpenMode.emailReader,
+      destination: 'in NoMail',
+    );
+  }
 
   // Non-http schemes (upi:, tel:, mailto:) can only be resolved by iOS.
   if (uri.scheme != 'http' && uri.scheme != 'https') {
@@ -150,6 +187,12 @@ LinkPlan planFor(
 
   // The app that claims this host, if the user has it. Launch the https URL
   // regardless — iOS routes it, and it is the format we can trust.
+  //
+  // Never a constructed scheme URL. Gmail is why that rule is written down: a
+  // widely-repeated `googlegmail:///cv=…` form was tried on a device and Gmail
+  // answered "unable to understand link", after iOS had already reported the
+  // launch as a success. A guessed scheme path cannot be made safe with a
+  // fallback, because there is no failure to fall back from.
   final target = AppCatalog.forHost(uri.host);
   if (target != null && installed.contains(target.key)) {
     return LinkPlan(

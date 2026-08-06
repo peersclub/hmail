@@ -141,7 +141,23 @@ class SignInScreen extends StatelessWidget {
                             ? null
                             : () => context.read<AppController>().enterDemo(),
                       ),
-                      const SizedBox(height: 12),
+                      CupertinoButton(
+                        padding: const EdgeInsets.symmetric(vertical: 4),
+                        onPressed: syncing
+                            ? null
+                            : () => context
+                                .read<AppController>()
+                                .replayOnboarding(),
+                        child: Text(
+                          'Replay intro',
+                          style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w500,
+                            color: Palette.secondaryLabel(context),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 4),
                       Text(
                         'Read-only access. NoMail never sends, moves, or deletes mail.',
                         textAlign: TextAlign.center,

@@ -52,8 +52,14 @@ class _ShellScreenState extends State<ShellScreen> {
     if (app == null || !mounted) return;
     if (app.showMoneyShot && !_moneyShotPresented) {
       _moneyShotPresented = true;
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (!mounted || !app.showMoneyShot) return;
+      // Wait until the shell's first frame + dock settle. Pushing a
+      // fullscreen route in the same frame as enterDemo remounts the
+      // tree and has crashed native navigators on device.
+      Future<void>.delayed(const Duration(milliseconds: 450), () {
+        if (!mounted || !app.showMoneyShot) {
+          _moneyShotPresented = false;
+          return;
+        }
         Navigator.of(context, rootNavigator: true)
             .push(
           CupertinoPageRoute<void>(

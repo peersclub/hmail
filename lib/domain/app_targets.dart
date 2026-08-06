@@ -444,11 +444,23 @@ class AppCatalog {
     AppTarget(
       key: 'gmail',
       name: 'Gmail',
-      // By far the most-used action in the app is "Open email". Without a
-      // probe we could neither detect the Gmail app nor say where the tap
-      // was going, which made every such tap look like a trip to Safari.
-      // We still launch the mail.google.com universal link; the scheme is
-      // only how we know the app is there.
+      // The exception to the probe/launch split above, because for Gmail the
+      // https side does not work on iOS at all: mail.google.com serves no
+      // apple-app-site-association naming the Gmail app (verified 2026-08-05
+      // — Apple's CDN copy is www.google.com's, 48 entries, none of them
+      // Gmail), so the universal link resolves to Safari every time. Gmail
+      // does claim other hosts (meet.google.com, chat.google.com); Google
+      // simply never claimed its own webmail host.
+      //
+      // So "Open email" — the app's most-tapped action — builds a
+      // googlegmail:// URL as well, in `domain/actions.dart`. That format is
+      // NOT documented, which is why launchFormatVerified stays false: it is
+      // attempted behind a fallback to the https URL rather than trusted.
+      // [universalHosts] is still correct and still earns its keep — it maps
+      // the https URL back to this entry, which is what tells the router the
+      // Gmail app is the owner and lets the scheme be tried at all. It is
+      // also literally true on Android, where mail.google.com's
+      // assetlinks.json does delegate to com.google.android.gm.
       probeScheme: 'googlegmail',
       universalHosts: ['mail.google.com'],
       category: AppCategory.other,

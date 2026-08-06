@@ -23,9 +23,18 @@ class BackupPrefs {
   final BackupFrequency frequency;
   final DateTime? lastBackupAt;
 
+  /// [frequency] defaults to daily — a device that has never opened the backup
+  /// screen still gets a cloud copy, because the people who most need one are
+  /// exactly the people who never went looking for the setting.
+  ///
+  /// It costs nothing unauthorized: `_maybeAutoBackup` runs only when the
+  /// destination is *already* authorized and never raises a consent sheet, so
+  /// on a device that has not connected Drive this default does nothing at all.
+  /// A user who explicitly chose Off has that stored and keeps it — this
+  /// default applies only where there is no stored answer.
   const BackupPrefs({
     this.destinationId = 'gdrive',
-    this.frequency = BackupFrequency.off,
+    this.frequency = BackupFrequency.daily,
     this.lastBackupAt,
   });
 

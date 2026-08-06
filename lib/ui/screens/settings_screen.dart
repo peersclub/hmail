@@ -157,6 +157,22 @@ class SettingsScreen extends StatelessWidget {
         GlassSection(
           children: [
             PressableRow(
+              onTap: () => context.read<AppController>().replayOnboarding(),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 16),
+                child: Center(
+                  child: Text(
+                    'Replay intro',
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w600,
+                      color: Palette.label(context),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+            PressableRow(
               onTap: () => _confirmSignOut(context, app),
               child: Padding(
                 padding: const EdgeInsets.symmetric(vertical: 16),
@@ -166,12 +182,32 @@ class SettingsScreen extends StatelessWidget {
                     style: TextStyle(
                       fontSize: 16,
                       fontWeight: FontWeight.w600,
-                      color: Palette.destructive(context),
+                      // Not destructive any more — signing out keeps your
+                      // insights. The red is spent on the row below, which is
+                      // the one that actually erases something.
+                      color: Palette.label(context),
                     ),
                   ),
                 ),
               ),
             ),
+            if (!app.isDemo)
+              PressableRow(
+                onTap: () => _confirmDeleteData(context),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 16),
+                  child: Center(
+                    child: Text(
+                      'Delete data on this device',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                        color: Palette.destructive(context),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
           ],
         ),
         const Footnote('NoMail — your inbox, minus the inbox.'),
@@ -235,13 +271,16 @@ class SettingsScreen extends StatelessWidget {
         title: Text(isDemo ? 'Exit demo?' : 'Sign out?'),
         message: Text(
           isDemo
-              ? 'The sample data is cleared and you return to sign-in.'
-              : 'Insights stored on this device are cleared. Your mail is '
-                  'untouched, and a backup can restore your insights later.',
+              ? 'Sample data is cleared and you return to sign-in. '
+                  'Tap Replay intro there to see the carousel again.'
+              : 'Your insights stay on this device and come back when you '
+                  'sign in with this account again. Your mail is untouched.',
         ),
         actions: [
           CupertinoActionSheetAction(
-            isDestructiveAction: true,
+            // No longer destructive: nothing is erased. "Delete data on this
+            // device" is the row for that, and keeping the red exclusive to it
+            // is what makes the difference legible.
             onPressed: () => Navigator.pop(sheetContext, true),
             child: Text(isDemo ? 'Exit Demo' : 'Sign Out'),
           ),
@@ -255,6 +294,39 @@ class SettingsScreen extends StatelessWidget {
     );
     if (confirmed == true && context.mounted) {
       await context.read<AppController>().signOut();
+    }
+  }
+
+  /// The genuinely destructive one, so it says exactly what goes and what
+  /// stays. "Your mail is untouched" is the sentence people need most here —
+  /// a delete button in an email app reads as deleting email.
+  Future<void> _confirmDeleteData(BuildContext context) async {
+    final confirmed = await showSheet<bool>(
+      context: context,
+      builder: (sheetContext) => CupertinoActionSheet(
+        title: const Text('Delete data on this device?'),
+        message: const Text(
+          'Erases your insights, learned recipes and corrections, and signs '
+          'you out. Your mail is untouched — nothing in Gmail changes. This '
+          'cannot be undone on this device; a cloud backup, if you have one, '
+          'can still restore it.',
+        ),
+        actions: [
+          CupertinoActionSheetAction(
+            isDestructiveAction: true,
+            onPressed: () => Navigator.pop(sheetContext, true),
+            child: const Text('Delete Data'),
+          ),
+        ],
+        cancelButton: CupertinoActionSheetAction(
+          isDefaultAction: true,
+          onPressed: () => Navigator.pop(sheetContext, false),
+          child: const Text('Cancel'),
+        ),
+      ),
+    );
+    if (confirmed == true && context.mounted) {
+      await context.read<AppController>().deleteLocalData();
     }
   }
 

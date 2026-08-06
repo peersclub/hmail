@@ -278,4 +278,47 @@ void main() {
           'https://mail.google.com/mail/u/0/#all/demo-netflix');
     });
   });
+
+  group('openEmailAction carries the message id for the in-app reader', () {
+    test('the id is kept whole, prefix included', () {
+      // Both URLs destroy the id into a URL string. The reader needs it back
+      // to ask Gmail for the body, and taking the https URL apart again would
+      // couple the reader to that URL's shape — the same coupling that let a
+      // false claim about universal links survive in this file for months.
+      expect(openEmailAction('a2:18c4f2a9b3e01d55').sourceEmailId,
+          'a2:18c4f2a9b3e01d55');
+      expect(openEmailAction('demo-netflix').sourceEmailId, 'demo-netflix');
+    });
+
+    test('no other action carries one', () {
+      // Only "Open email" is *about* a message. A tracking link is about a
+      // parcel, and giving it a source id would make it eligible for a reader
+      // route it has no business taking.
+      final actions = actionsForDelivery(Delivery(
+        merchant: 'Amazon',
+        carrier: 'Delhivery',
+        status: DeliveryStatus.shipped,
+        trackingUrl: 'https://www.delhivery.com/track/package/AWB123',
+        lastSeen: DateTime(2026, 8, 1),
+        sourceEmailId: '18c4f2a9b3e01d55',
+      ));
+      expect(actions.first.kind, ActionKind.track);
+      expect(actions.first.sourceEmailId, isNull);
+      expect(actions.last.kind, ActionKind.openEmail);
+      expect(actions.last.sourceEmailId, '18c4f2a9b3e01d55');
+    });
+
+    test('no action ever carries a googlegmail:// URL', () {
+      // Regression guard with a device verdict behind it. On 2026-08-06 a
+      // constructed `googlegmail:///cv=<id>/accountId=<N>&create-new-tab` was
+      // tapped on a real iPhone and Gmail answered "unable to understand
+      // link" — after iOS had already reported the launch as successful, so
+      // the fallback never fired and the user saw Gmail's error dialog.
+      // Reinstating a scheme URL needs a format verified on a device, not a
+      // plausible one behind a safety net.
+      for (final id in ['18c4f2a9b3e01d55', 'a1:18c4f2a9b3e01d55']) {
+        expect(openEmailAction(id).uri.scheme, 'https', reason: 'id was "$id"');
+      }
+    });
+  });
 }

@@ -4,6 +4,7 @@ import '../../domain/models.dart';
 import '../../domain/scan_settings.dart';
 import 'gmail_source.dart';
 import 'mail_source.dart';
+import 'message_reader.dart';
 
 /// A [MailSource] that fans a [GmailSource] out across every connected Gmail
 /// account and merges the results into one candidate list, so downstream
@@ -89,5 +90,31 @@ class MultiGmailSource implements MailSource {
       }
     }
     return merged;
+  }
+
+  /// `a<N>:<gmailId>` — the prefix [fetchCandidates] stamps on, read back.
+  static final _prefixed = RegExp(r'^a(\d+):(.+)$');
+
+  /// The full body of one message, routed to the account it came from.
+  ///
+  /// The prefix is not decoration: Gmail message ids are unique only within an
+  /// account, so asking the wrong inbox for one either 404s or — worse, if the
+  /// id happens to exist there too — returns a different person's email.
+  /// Anything that doesn't carry a prefix is assumed to be account 0, which is
+  /// what single-account ids look like.
+  Future<MessageBody?> fetchMessageBody(String sourceEmailId) async {
+    var index = 0;
+    var id = sourceEmailId;
+    final match = _prefixed.firstMatch(sourceEmailId);
+    if (match != null) {
+      index = int.parse(match.group(1)!);
+      id = match.group(2)!;
+    }
+    // An account removed since the last sync leaves its insights behind, so
+    // the index can outlive the api it named. No lower bound is needed: the
+    // pattern's `\d+` cannot match a sign, so anything shaped like `a-1:` is
+    // simply not a prefix and was already treated as account 0 above.
+    if (index >= apis.length) return null;
+    return GmailSource(apis[index], settings: settings).fetchMessageBody(id);
   }
 }

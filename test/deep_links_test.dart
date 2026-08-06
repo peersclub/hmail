@@ -14,6 +14,43 @@ InsightAction action(String url, ActionKind kind, {String label = 'Go'}) =>
     InsightAction(label: label, uri: Uri.parse(url), kind: kind);
 
 void main() {
+  // Every plan launches the URL the action already carries. The app catalog
+  // decides *whether* iOS gets it rather than *what* iOS gets, and Gmail is
+  // the reason that line is drawn: a constructed `googlegmail:///cv=…` was
+  // tapped on a device and Gmail rejected it, after iOS had reported the
+  // launch as a success — so a guessed scheme path has no failure to fall
+  // back from and cannot be made safe.
+  group('no plan ever rewrites the URL it was given', () {
+    test('a detected app still gets the https universal link', () {
+      final track =
+          action('https://www.delhivery.com/track/package/AWB1', ActionKind.track);
+      final plan = planFor(track, {'delhivery'});
+      expect(plan.mode, LinkOpenMode.nativeApp);
+      expect(plan.uri, track.uri);
+    });
+
+    test('Gmail installed changes nothing about the URL', () {
+      final openEmail = openEmailAction('18c4f2a9b3e01d55');
+      final plan = planFor(openEmail, {'gmail'});
+      expect(plan.uri, openEmail.uri);
+      expect(plan.uri.scheme, 'https');
+    });
+
+    test('every mode preserves the action URL exactly', () {
+      for (final act in [
+        openEmailAction('18c4f2a9b3e01d55'),
+        action('https://www.delhivery.com/t/1', ActionKind.track),
+        action('https://t.17track.net/x', ActionKind.track),
+        action('upi://pay?pa=x@y&am=1', ActionKind.pay),
+      ]) {
+        for (final installed in [const <String>{}, {'gmail', 'delhivery'}]) {
+          expect(planFor(act, installed).uri, act.uri,
+              reason: '${act.uri} with installed=$installed');
+        }
+      }
+    });
+  });
+
   group('native app when installed', () {
     test('a tracking link opens Delhivery when Delhivery is present', () {
       final plan = planFor(

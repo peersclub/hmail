@@ -131,7 +131,11 @@ void main() {
       await controller.enterDemo();
       await tester.pumpWidget(wrap(controller, const ShellScreen()));
       await tester.pump();
+      // Past ShellScreen's delay, then settled so the modal is fully pushed —
+      // a half-pushed modal is worse than either state here, because the guard
+      // below would not find its button and would leave it covering Today.
       await tester.pump(const Duration(milliseconds: 900));
+      await tester.pumpAndSettle();
 
       // First-scan modal covers Today — dismiss it before tapping a row.
       if (find.text('Show my Today').evaluate().isNotEmpty) {
@@ -160,8 +164,14 @@ void main() {
           reason: 'an empty-to-populated sync is a first scan');
 
       await tester.pumpWidget(wrap(controller, const ShellScreen()));
-      await tester.pump(); // schedule the post-frame push
+      await tester.pump();
+      // ShellScreen waits out a timer before pushing the modal, so the clock
+      // has to be advanced explicitly: a pending timer schedules no frame, so
+      // pumpAndSettle alone would return without ever firing it. Settling
+      // afterwards is what lets the pushed route finish animating in — firing
+      // the timer only gets the push started.
       await tester.pump(const Duration(milliseconds: 900));
+      await tester.pumpAndSettle();
       expect(find.text('HIDING IN YOUR INBOX'), findsOneWidget);
       expect(find.text('Show my Today'), findsOneWidget);
 
@@ -192,7 +202,11 @@ void main() {
         ),
       );
       await tester.pump();
-      await tester.pump(const Duration(milliseconds: 50));
+      // The push is behind a timer regardless of the animation setting, so the
+      // clock still has to clear it; disableAnimations only makes the count-up
+      // land on its final figure once the modal is up.
+      await tester.pump(const Duration(milliseconds: 900));
+      await tester.pumpAndSettle();
       expect(find.textContaining(stats.annualRecurringDisplay.replaceAll('/yr', '')),
           findsWidgets);
     });
@@ -260,6 +274,30 @@ void main() {
       expect(find.textContaining('One tap'), findsOneWidget);
       expect(find.text('Continue with Google'), findsOneWidget);
       expect(find.text('Explore with Sample Data'), findsOneWidget);
+    });
+
+    testWidgets('Replay intro returns to the carousel after Skip',
+        (tester) async {
+      useTallSurface(tester);
+      SharedPreferences.setMockInitialValues({'seen_onboarding': true});
+      final controller = AppController();
+      await tester.pumpWidget(
+        ChangeNotifierProvider.value(
+          value: controller,
+          child: const NoMailApp(),
+        ),
+      );
+      await controller.init();
+      await tester.pumpAndSettle();
+
+      expect(find.text('Welcome to NoMail'), findsOneWidget);
+
+      await tester.tap(find.text('Replay intro'));
+      await tester.pumpAndSettle();
+
+      expect(controller.seenOnboarding, isFalse);
+      expect(find.byType(OnboardingScreen), findsOneWidget);
+      expect(find.textContaining('minus the inbox'), findsOneWidget);
     });
   });
 

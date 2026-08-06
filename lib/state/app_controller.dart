@@ -17,6 +17,7 @@ import '../data/backup/drive_backup_target.dart';
 import '../data/backup/icloud_backup_target.dart';
 import '../data/mail/gmail_auth.dart';
 import '../data/mail/mail_source.dart';
+import '../data/mail/message_reader.dart';
 import '../data/mail/multi_gmail_source.dart';
 import '../data/store/accounts_store.dart';
 import '../data/store/backup_prefs_store.dart';
@@ -298,6 +299,16 @@ class AppController extends ChangeNotifier {
     _seenOnboarding = true;
     notifyListeners();
     await _settingsStore.setSeenOnboarding(true);
+  }
+
+  /// Clears the intro flag and signs out so the carousel can play again.
+  Future<void> replayOnboarding() async {
+    if (_phase != AppPhase.signedOut || _isDemo) {
+      await signOut();
+    }
+    _seenOnboarding = false;
+    notifyListeners();
+    await _settingsStore.setSeenOnboarding(false);
   }
 
   /// Switching a recipe off keeps it in the playbook, so the learner won't
@@ -583,17 +594,53 @@ class AppController extends ChangeNotifier {
     _playbook = await _knowledgeStore.load();
     _feedback = await _feedbackStore.load();
     _ignores = await _ignoreStore.load();
-    final snap = await _store.load();
-    if (snap != null) {
-      _snapshot = snap;
-      _hadInsights = !snap.isEmpty;
-    }
+    await _restoreSnapshot();
     notifyListeners();
   }
 
 
-  SyncEngine _engine(MailSource source, {InsightAi? ai}) =>
-      SyncEngine(source: source, ai: ai ?? _ai, store: _store);
+  /// Owner recorded on demo snapshots.
+  ///
+  /// Demo runs the real pipeline, which means it writes to the real store. Now
+  /// that a snapshot outlives its session, that needed an owner: left unscoped
+  /// it would be readable by anyone, so demo → exit → sign in for real would
+  /// restore Netflix-and-BESCOM fixtures as somebody's actual insights. No
+  /// Gmail address can equal this, so no real session can ever match it.
+  static const _demoOwner = 'demo:fixtures';
+
+  /// The signed-in accounts, in the order [MultiGmailSource] indexes them.
+  /// Stored with every snapshot so a later sign-in can tell whose it is.
+  List<String> get _liveAccounts => _isDemo
+      ? const [_demoOwner]
+      : [for (final a in _auth.accounts) a.email];
+
+  /// Insights dropped by the last restore because the account they came from
+  /// is no longer connected. Non-zero means the restore was partial, and the
+  /// user should be told rather than left to wonder what shrank.
+  int _droppedOnRestore = 0;
+  int get droppedOnRestore => _droppedOnRestore;
+
+  /// Pulls the stored snapshot back into memory for whoever is signed in now.
+  ///
+  /// This is the whole answer to "why is my data gone after signing out". It
+  /// is not a restore *from a backup* — the snapshot never left the device.
+  /// Sign-out only forgets the session; the data stays, scoped to the accounts
+  /// that produced it, and is picked back up here.
+  Future<void> _restoreSnapshot() async {
+    final scoped = await _store.loadScoped(accounts: _liveAccounts);
+    _droppedOnRestore = scoped?.verdict.droppedInsights ?? 0;
+    if (scoped == null || scoped.snapshot.isEmpty) return;
+    _snapshot = scoped.snapshot;
+    // Already-seen data must not re-trigger the first-sync celebration.
+    _hadInsights = true;
+  }
+
+  SyncEngine _engine(MailSource source, {InsightAi? ai}) => SyncEngine(
+        source: source,
+        ai: ai ?? _ai,
+        store: _store,
+        accounts: _liveAccounts,
+      );
 
   /// App start: render the cached snapshot instantly, resume the Google
   /// session silently, then refresh in the background.
@@ -604,9 +651,6 @@ class AppController extends ChangeNotifier {
     _playbook = await _knowledgeStore.load();
     _backupPrefs = await _backupPrefsStore.load();
     _knownAccounts = await _accountsStore.load();
-    final cached = await _store.load();
-    if (cached != null && !cached.isEmpty) _snapshot = cached;
-    _hadInsights = !_snapshot.isEmpty;
 
     // Warm the installed-app sweep so the first action sheet is instant and
     // already knows which apps to name.
@@ -617,6 +661,14 @@ class AppController extends ChangeNotifier {
     unawaited(_notifications.init(onTap: _onNotificationTap));
 
     final resumed = await _auth.resumeSilently();
+    _bindMessageReader();
+
+    // The snapshot is loaded *after* auth, not before, because it can only be
+    // read once we know who is signed in — the stored copy is scoped to an
+    // account list and reading it blind could show one user another's
+    // insights. `resumeSilently` is a local platform call, so this still
+    // renders well before the network sync starts.
+    await _restoreSnapshot();
     if (resumed) {
       // The platform restores only its single active session; merge it into
       // the remembered list so every *other* stored account surfaces as a
@@ -658,6 +710,14 @@ class AppController extends ChangeNotifier {
     // Only now does the app leave the sign-in screen — for a real sync.
     _isDemo = false;
     await _persistAccounts();
+
+    // Signing back in is the case this exists for: the snapshot from last time
+    // is still on disk, so it is put back before the scan rather than after.
+    // The user sees their data immediately, and `sync()` then merges fresh
+    // results onto it — which is also what preserves price history, since a
+    // hike is detected by diffing against the previous snapshot and there
+    // would be nothing to diff against if we scanned from empty.
+    await _restoreSnapshot();
     _phase = AppPhase.syncing;
     notifyListeners();
     await sync();
@@ -750,7 +810,26 @@ class AppController extends ChangeNotifier {
 
   /// Runs after every successful sync: fire the first-data celebration and
   /// keep tomorrow's 8am brief notification carrying today's content.
+  /// Points the in-app email reader at whatever accounts are connected now.
+  ///
+  /// Called after anything that changes them. Binding null is the meaningful
+  /// half: a stale closure would keep a signed-out account's API client alive,
+  /// and [MessageReader.isAvailable] is what decides whether "Open email"
+  /// offers the reader at all — left true after sign-out, every tap would open
+  /// a screen that could only fail.
+  ///
+  /// Demo mode binds null on purpose. Its fixtures have no real message
+  /// bodies, so the honest behaviour is the old web hand-off.
+  void _bindMessageReader() {
+    final apis = _auth.apis;
+    messageReader.bind(_isDemo || apis.isEmpty
+        ? null
+        : (id) => MultiGmailSource(apis, settings: _settings)
+            .fetchMessageBody(id));
+  }
+
   void _afterSnapshotUpdate() {
+    _bindMessageReader();
     if (!_hadInsights && !_snapshot.isEmpty) {
       _hadInsights = true;
       _showMoneyShot = true;
@@ -903,18 +982,60 @@ class AppController extends ChangeNotifier {
     if (_auth.hasAccounts) await rescan();
   }
 
+  /// Ends the session and leaves the data where it is.
+  ///
+  /// Sign-out used to clear the snapshot and the remembered accounts, which
+  /// meant signing back in cost a full rescan — and worse, cost data outright:
+  /// the scan windows are capped per domain (bills 60 days, deliveries 30,
+  /// events 14), so anything older could never come back, and price history is
+  /// *derived* by diffing two snapshots, so wiping the snapshot destroyed the
+  /// "before" price permanently.
+  ///
+  /// What made the clear feel necessary was a real risk — a different Google
+  /// account signing in on the same phone must not see the last one's mail.
+  /// That is now handled where it belongs: the stored snapshot names the
+  /// accounts it belongs to, and [InsightStore.load] hands back nothing to
+  /// anyone else. So sign-out means "end the session", and deleting the data is
+  /// [deleteLocalData] — a separate thing the user asks for on purpose.
   Future<void> signOut() async {
     await _auth.signOutAll();
-    await _store.clear();
-    await _accountsStore.clear();
-    _knownAccounts = [];
     _accountSyncIssues = const {};
     _accountsNotice = null;
     _accountsError = null;
+    // Cleared from memory, not from disk: the signed-out screens must not
+    // render the last session's insights.
     _snapshot = const InsightSnapshot();
+    _hadInsights = false;
     _isDemo = false;
     _error = null;
     _phase = AppPhase.signedOut;
+    _bindMessageReader();
     notifyListeners();
+  }
+
+  /// Erases everything NoMail keeps on this device.
+  ///
+  /// The destructive half of what sign-out used to do, now explicit. Mail is
+  /// untouched — this is only the derived copy: insights, learned recipes, the
+  /// remembered account list, corrections and link feedback. Preferences
+  /// (scan settings, backup destination) stay, because they are configuration
+  /// rather than data and re-entering them helps nobody.
+  Future<void> deleteLocalData() async {
+    await _store.clear();
+    await _accountsStore.clear();
+    await _knowledgeStore.clear();
+    await _ignoreStore.clear();
+    await _feedbackStore.clear();
+    _knownAccounts = [];
+    _playbook = Playbook.empty;
+    _ignores = IgnoreList.empty;
+    _feedback = const LinkFeedbackLog();
+    _snapshot = const InsightSnapshot();
+    _hadInsights = false;
+    _droppedOnRestore = 0;
+    notifyListeners();
+    // Sign out last: it notifies too, and doing it first would leave the
+    // signed-out screen up while the stores were still being emptied.
+    await signOut();
   }
 }
