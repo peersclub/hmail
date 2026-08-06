@@ -6,6 +6,7 @@ import '../core/palette.dart';
 import '../domain/insight.dart';
 import '../state/app_controller.dart';
 import 'action_sheet.dart';
+import 'explain_sheet.dart';
 import 'glass/glass.dart';
 
 /// The one row that renders any [Insight], whatever its domain. Brand glyph
@@ -32,6 +33,17 @@ class InsightCard extends StatelessWidget {
       trailingCaption: insight.caption,
       trailingCaptionColor: captionColor,
       trailingCaptionPill: insight.overdue,
+      // Press and hold to ask what the row actually is. Offered only when it
+      // can be answered — a gesture that always apologises teaches the user to
+      // stop trying it.
+      onLongPress: canExplain() && insight.sourceEmailId != null
+          ? () => showExplanation(
+                context,
+                sourceEmailId: insight.sourceEmailId!,
+                label: insight.title,
+                context_: insight.subtitle,
+              )
+          : null,
       onTap: insight.actions.isEmpty
           ? null
           : () => showInsightActions(

@@ -21,6 +21,7 @@ List<Insight> snapshotToInsights(InsightSnapshot s) {
       id: 'bill:${b.sourceEmailId}',
       domain: InsightDomain.money,
       title: b.issuer,
+      subtitle: b.note,
       trailing: formatMoney(b.amount, b.currency),
       caption: b.dueDate == null
           ? null
@@ -31,6 +32,7 @@ List<Insight> snapshotToInsights(InsightSnapshot s) {
       brandKey: b.issuer,
       weight: b.isOverdue ? 90 : 70,
       actions: actionsForBill(b),
+      sourceEmailId: b.sourceEmailId,
       ignoreKind: IgnoreKind.bill,
     ));
   }
@@ -58,6 +60,7 @@ List<Insight> snapshotToInsights(InsightSnapshot s) {
       brandKey: c.service,
       weight: 85,
       actions: actionsForPriceChange(c, s.subscriptions),
+      sourceEmailId: c.sourceEmailId,
       // A price change is suppressed by correcting the subscription it
       // belongs to — two separate switches for one mistake would be worse
       // than one.
@@ -70,6 +73,7 @@ List<Insight> snapshotToInsights(InsightSnapshot s) {
       id: 'sub:${sub.sourceEmailId}',
       domain: InsightDomain.money,
       title: sub.service,
+      subtitle: sub.note,
       trailing: '${formatMoney(sub.amount, sub.currency)}/mo',
       caption: sub.nextRenewal == null
           ? null
@@ -79,6 +83,7 @@ List<Insight> snapshotToInsights(InsightSnapshot s) {
       brandKey: sub.service,
       weight: 55,
       actions: actionsForSubscription(sub),
+      sourceEmailId: sub.sourceEmailId,
       ignoreKind: IgnoreKind.subscription,
     ));
   }
@@ -88,13 +93,15 @@ List<Insight> snapshotToInsights(InsightSnapshot s) {
       id: 'delivery:${d.sourceEmailId}',
       domain: InsightDomain.commerce,
       title: d.merchant,
-      subtitle: _deliveryStatus(d),
+      subtitle: [_deliveryStatus(d), if (d.note != null) d.note!]
+          .join(' · '),
       caption: d.eta == null ? null : formatDay(d.eta!),
       anchorDate: d.eta,
       icon: CupertinoIcons.cube_box_fill,
       brandKey: d.merchant,
       weight: d.status == DeliveryStatus.outForDelivery ? 60 : 45,
       actions: actionsForDelivery(d),
+      sourceEmailId: d.sourceEmailId,
       ignoreKind: IgnoreKind.delivery,
     ));
   }
@@ -110,6 +117,7 @@ List<Insight> snapshotToInsights(InsightSnapshot s) {
       brandKey: e.organizer,
       weight: 50,
       actions: actionsForEvent(e),
+      sourceEmailId: e.sourceEmailId,
       ignoreKind: IgnoreKind.event,
       // Recurring noise comes from the organiser, not the meeting title.
       ignoreSubject: e.organizer ?? e.title,
@@ -142,6 +150,7 @@ List<Insight> snapshotToInsights(InsightSnapshot s) {
           ),
         openEmailAction(p.sourceEmailId),
       ],
+      sourceEmailId: p.sourceEmailId,
     ));
   }
 
@@ -173,6 +182,7 @@ List<Insight> snapshotToInsights(InsightSnapshot s) {
           ),
         openEmailAction(t.sourceEmailId),
       ],
+      sourceEmailId: t.sourceEmailId,
     ));
   }
 
@@ -200,6 +210,7 @@ List<Insight> snapshotToInsights(InsightSnapshot s) {
           ),
         openEmailAction(r.sourceEmailId),
       ],
+      sourceEmailId: r.sourceEmailId,
     ));
   }
 
@@ -236,6 +247,7 @@ List<Insight> snapshotToInsights(InsightSnapshot s) {
         (false, false) => 30,
       },
       actions: actionsForLearned(l),
+      sourceEmailId: l.sourceEmailId,
       ignoreKind: IgnoreKind.learned,
       ignoreSubject: l.label,
     ));
@@ -261,6 +273,7 @@ List<Insight> snapshotToInsights(InsightSnapshot s) {
           ),
         openEmailAction(f.sourceEmailId),
       ],
+      sourceEmailId: f.sourceEmailId,
     ));
   }
 
@@ -274,6 +287,7 @@ List<Insight> snapshotToInsights(InsightSnapshot s) {
       icon: CupertinoIcons.exclamationmark_shield,
       weight: 100,
       actions: actionsForAttention(a),
+      sourceEmailId: a.sourceEmailId,
       // Security alerts are the one family where a wrong suppression is
       // dangerous, so the correction keys on the exact title rather than a
       // brand — it silences this alert, not everything from the sender.

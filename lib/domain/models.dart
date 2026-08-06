@@ -48,6 +48,9 @@ class Subscription {
   /// Manage/cancel link captured from the email, when one was present.
   final String? manageUrl;
 
+  /// What the email said this was — see [Bill.note].
+  final String? note;
+
   const Subscription({
     required this.service,
     required this.amount,
@@ -57,6 +60,7 @@ class Subscription {
     required this.lastSeen,
     required this.sourceEmailId,
     this.manageUrl,
+    this.note,
   });
 
   double get monthlyAmount =>
@@ -71,6 +75,7 @@ class Subscription {
         lastSeen: lastSeen,
         sourceEmailId: sourceEmailId,
         manageUrl: manageUrl,
+        note: note,
       );
 
   String get dedupeKey => service.toLowerCase();
@@ -84,6 +89,7 @@ class Subscription {
         'lastSeen': lastSeen.toIso8601String(),
         'sourceEmailId': sourceEmailId,
         'manageUrl': manageUrl,
+        'note': note,
       };
 
   factory Subscription.fromJson(Map<String, dynamic> json) => Subscription(
@@ -100,6 +106,7 @@ class Subscription {
         lastSeen: DateTime.parse(json['lastSeen'] as String),
         sourceEmailId: json['sourceEmailId'] as String,
         manageUrl: json['manageUrl'] as String?,
+        note: json['note'] as String?,
       );
 }
 
@@ -114,6 +121,16 @@ class Bill {
   /// Direct pay link from the email — a biller payment page or a upi:// intent.
   final String? payUrl;
 
+  /// One short line saying what this actually is, taken from the email's own
+  /// subject.
+  ///
+  /// A bill row used to show a name, an amount and a date and nothing else,
+  /// which is unreadable the moment the name is an intermediary: "CRED · ₹599 ·
+  /// Due Tuesday" tells you nothing, because CRED is never the biller. The
+  /// subject line is the one description the sender wrote themselves, so it is
+  /// both the cheapest and the most honest thing to show.
+  final String? note;
+
   const Bill({
     required this.issuer,
     required this.amount,
@@ -122,6 +139,7 @@ class Bill {
     required this.lastSeen,
     required this.sourceEmailId,
     this.payUrl,
+    this.note,
   });
 
   Bill withIssuer(String name) => Bill(
@@ -132,6 +150,7 @@ class Bill {
         lastSeen: lastSeen,
         sourceEmailId: sourceEmailId,
         payUrl: payUrl,
+        note: note,
       );
 
   int? get _daysUntilDue {
@@ -168,6 +187,7 @@ class Bill {
         'lastSeen': lastSeen.toIso8601String(),
         'sourceEmailId': sourceEmailId,
         'payUrl': payUrl,
+        'note': note,
       };
 
   factory Bill.fromJson(Map<String, dynamic> json) => Bill(
@@ -180,6 +200,7 @@ class Bill {
         lastSeen: DateTime.parse(json['lastSeen'] as String),
         sourceEmailId: json['sourceEmailId'] as String,
         payUrl: json['payUrl'] as String?,
+        note: json['note'] as String?,
       );
 }
 
@@ -198,6 +219,10 @@ class Delivery {
   /// carrier URL template because it lands on the exact shipment page.
   final String? trackingUrl;
 
+  /// What the email said this was — see [Bill.note]. "Shipped" alone does not
+  /// say *what* shipped.
+  final String? note;
+
   const Delivery({
     required this.merchant,
     this.carrier,
@@ -207,6 +232,7 @@ class Delivery {
     required this.lastSeen,
     required this.sourceEmailId,
     this.trackingUrl,
+    this.note,
   });
 
   bool get isActive => status != DeliveryStatus.delivered && !isStale;
@@ -220,6 +246,7 @@ class Delivery {
         lastSeen: lastSeen,
         sourceEmailId: sourceEmailId,
         trackingUrl: trackingUrl,
+        note: note,
       );
 
   /// An ETA more than a day in the past means it almost certainly arrived —
@@ -244,6 +271,7 @@ class Delivery {
         'lastSeen': lastSeen.toIso8601String(),
         'sourceEmailId': sourceEmailId,
         'trackingUrl': trackingUrl,
+        'note': note,
       };
 
   factory Delivery.fromJson(Map<String, dynamic> json) => Delivery(
@@ -258,6 +286,7 @@ class Delivery {
         lastSeen: DateTime.parse(json['lastSeen'] as String),
         sourceEmailId: json['sourceEmailId'] as String,
         trackingUrl: json['trackingUrl'] as String?,
+        note: json['note'] as String?,
       );
 }
 

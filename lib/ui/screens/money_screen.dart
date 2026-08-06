@@ -11,6 +11,7 @@ import '../../domain/models.dart';
 import '../../domain/price_watch.dart';
 import '../../state/app_controller.dart';
 import '../action_sheet.dart';
+import '../explain_sheet.dart';
 import '../format.dart';
 import '../glass/glass.dart';
 import '../widgets/journey_states.dart';
@@ -113,6 +114,14 @@ class MoneyScreen extends StatelessWidget {
                     trailingCaptionColor: change.isIncrease
                         ? Palette.destructive(context)
                         : null,
+                    onLongPress: canExplain()
+                        ? () => showExplanation(
+                              context,
+                              sourceEmailId: change.sourceEmailId,
+                              label: change.service,
+                              context_: 'price change',
+                            )
+                        : null,
                     onTap: () => showInsightActions(
                       context,
                       title: change.service,
@@ -148,6 +157,14 @@ class MoneyScreen extends StatelessWidget {
                     subtitle: _subscriptionSubtitle(sub),
                     trailing:
                         '${formatMoney(sub.monthlyAmount, sub.currency)}/mo',
+                    onLongPress: canExplain()
+                        ? () => showExplanation(
+                              context,
+                              sourceEmailId: sub.sourceEmailId,
+                              label: sub.service,
+                              context_: sub.note,
+                            )
+                        : null,
                     onTap: () => showInsightActions(
                       context,
                       title: sub.service,
@@ -170,6 +187,8 @@ class MoneyScreen extends StatelessWidget {
                   GlassRow(
                     icon: CupertinoIcons.doc_text_fill,
                     title: bill.issuer,
+                    subtitle: bill.note,
+                    subtitleMaxLines: 2,
                     trailing: formatMoney(bill.amount, bill.currency),
                     trailingCaption: bill.isOverdue
                         ? 'Overdue'
@@ -180,6 +199,14 @@ class MoneyScreen extends StatelessWidget {
                       overdue: bill.isOverdue,
                     ),
                     trailingCaptionPill: bill.isOverdue,
+                    onLongPress: canExplain()
+                        ? () => showExplanation(
+                              context,
+                              sourceEmailId: bill.sourceEmailId,
+                              label: bill.issuer,
+                              context_: bill.note,
+                            )
+                        : null,
                     onTap: () => showInsightActions(
                       context,
                       title: bill.issuer,
@@ -210,6 +237,9 @@ class MoneyScreen extends StatelessWidget {
       if (sub.cadence == Cadence.yearly)
         'Yearly · ${formatMoney(sub.amount, sub.currency)}',
       if (sub.nextRenewal != null) 'Renews ${formatDay(sub.nextRenewal!)}',
+      // Last, and only when the other two left room: the cadence and the
+      // renewal date are the facts, the subject is the context.
+      if (sub.note != null && sub.nextRenewal == null) sub.note!,
     ];
     return parts.isEmpty ? null : parts.join(' · ');
   }

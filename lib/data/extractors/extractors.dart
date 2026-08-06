@@ -192,6 +192,7 @@ Subscription? extractSubscription(EmailMeta email) {
 
   return Subscription(
     service: service,
+    note: describeSubject(email.subject, party: service),
     amount: money.amount,
     currency: money.currency,
     cadence: cadence,
@@ -274,21 +275,10 @@ Bill? extractBill(EmailMeta email) {
   if (money == null) return null;
 
   // Sender domain identifies the issuer more precisely than subject words
-  // ("billing@bescom.co.in" beats the generic "electricity" in the subject).
-  String issuer = _titleCaseDomain(email.senderDomain);
-  final domainMatch = _billIssuers.entries
-      .where((entry) => email.senderDomain.contains(entry.key))
-      .firstOrNull;
-  if (domainMatch != null) {
-    issuer = domainMatch.value;
-  } else {
-    for (final entry in _billIssuers.entries) {
-      if (subject.contains(entry.key)) {
-        issuer = entry.value;
-        break;
-      }
-    }
-  }
+  // ("billing@bescom.co.in" beats the generic "electricity" in the subject) —
+  // except when the sender only handles the payment, in which case the subject
+  // is the *only* place the real biller appears. See [resolveParty].
+  final issuer = resolveParty(email, _billIssuers, subjectLower: subject);
 
   // Look for the date nearest the word "due" for precision.
   final dueIndex = hay.indexOf('due');
@@ -300,6 +290,7 @@ Bill? extractBill(EmailMeta email) {
 
   return Bill(
     issuer: issuer,
+    note: describeSubject(email.subject, party: issuer),
     amount: money.amount,
     currency: money.currency,
     dueDate: dueDate,
@@ -313,6 +304,99 @@ Bill? extractBill(EmailMeta email) {
       ],
     ),
   );
+}
+
+/// Senders that bill, charge or ship on somebody else's behalf.
+///
+/// These are the worst possible thing to name a row after, because they are
+/// never the subject of the mail: CRED forwards reminders for other billers,
+/// Razorpay and Billdesk are gateways sending receipts for other merchants,
+/// Shiprocket ships for other shops. A row reading "CRED · ₹599 · Due Tuesday"
+/// names the postman instead of the letter.
+///
+/// So when the sender is one of these, the real party is looked for in the
+/// subject and body, and if it cannot be found the name is qualified ("via
+/// CRED") rather than presented as the biller.
+const _intermediaries = <String>{
+  'cred.club',
+  'cred.money',
+  'razorpay',
+  'billdesk',
+  'payu',
+  'juspay',
+  'ccavenue',
+  'instamojo',
+  'cashfree',
+  'phonepe',
+  'paytm',
+  'shiprocket',
+  'zoho',
+  'invoicing',
+  'quickbooks',
+  'chargebee',
+  'stripe',
+  'paddle',
+  'fastspring',
+  'recurly',
+};
+
+bool _isIntermediary(String senderDomain) =>
+    _intermediaries.any(senderDomain.contains);
+
+/// The best available name for whoever the mail is really about.
+///
+/// [known] is the extractor's own domain→brand map, consulted first because a
+/// curated name beats anything guessed. When the sender is an intermediary the
+/// subject is searched for a known brand, since "Your Vodafone bill via CRED"
+/// carries the answer even though the sender does not.
+String resolveParty(
+  EmailMeta email,
+  Map<String, String> known, {
+  required String subjectLower,
+}) {
+  for (final entry in known.entries) {
+    if (email.senderDomain.contains(entry.key)) return entry.value;
+  }
+  for (final entry in known.entries) {
+    if (subjectLower.contains(entry.key)) return entry.value;
+  }
+  final sender = _titleCaseDomain(email.senderDomain);
+  if (!_isIntermediary(email.senderDomain)) return sender;
+
+  // An intermediary with no recognisable brand anywhere. Saying "via X" is the
+  // honest form: it tells the user who sent it without claiming they are who
+  // the money is owed to.
+  return 'via $sender';
+}
+
+/// The email's subject, tidied into one line of description.
+///
+/// Strips the prefixes and decoration that carry no information — "Re:",
+/// "Fwd:", "[Notification]", trailing reference numbers in brackets — and drops
+/// it entirely when what remains only repeats the party's own name, because a
+/// row reading "Netflix / Netflix" is worse than a row with no subtitle.
+String? describeSubject(String subject, {String? party}) {
+  var text = subject.trim();
+  // Repeated Re:/Fwd: chains, in either order.
+  text = text.replaceAll(
+      RegExp(r'^\s*((re|fw|fwd)\s*:\s*)+', caseSensitive: false), '');
+  // Leading bracketed tags: "[Notification]", "(Automated)".
+  text = text.replaceAll(RegExp(r'^\s*[\[(][^\])]{0,24}[\])]\s*'), '');
+  text = text.replaceAll(RegExp(r'\s+'), ' ').trim();
+  if (text.isEmpty) return null;
+
+  if (party != null) {
+    final bare = text.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]'), '');
+    final name = party.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]'), '');
+    if (name.isNotEmpty && bare == name) return null;
+  }
+
+  // Long subjects are truncated on a word boundary: the row shows two lines at
+  // most, and an ellipsised half-word reads as a bug.
+  const limit = 78;
+  if (text.length <= limit) return text;
+  final cut = text.lastIndexOf(' ', limit);
+  return '${text.substring(0, cut > 40 ? cut : limit).trimRight()}…';
 }
 
 const _carriers = <String, String>{
@@ -449,6 +533,7 @@ Delivery? extractDelivery(EmailMeta email) {
 
   return Delivery(
     merchant: merchant,
+    note: describeSubject(email.subject, party: merchant),
     carrier: carrier,
     status: status,
     trackingNumber: tracking,

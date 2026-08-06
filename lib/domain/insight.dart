@@ -60,6 +60,14 @@ class Insight {
 
   final List<InsightAction> actions;
 
+  /// The email this came from, when it came from exactly one.
+  ///
+  /// Carried explicitly rather than parsed back out of [id]: most ids are
+  /// `kind:sourceEmailId`, but price changes and learned cards key on their own
+  /// dedupe key instead, so parsing would be right most of the time — which is
+  /// the worst kind of wrong for something that fetches a message.
+  final String? sourceEmailId;
+
   /// What a "this isn't a bill" correction on this row would suppress, and for
   /// which name. Null means the row offers no correction — either because the
   /// family has no useful generalisation, or because there is no name to
@@ -80,6 +88,7 @@ class Insight {
     this.brandKey,
     required this.weight,
     this.actions = const [],
+    this.sourceEmailId,
     this.ignoreKind,
     this.ignoreSubject,
   });

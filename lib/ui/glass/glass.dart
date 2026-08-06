@@ -312,6 +312,9 @@ class GlassRow extends StatelessWidget {
   final int subtitleMaxLines;
   final bool trailingCaptionPill;
 
+  /// Press and hold. Rows pass "explain this" here — see `explain_sheet.dart`.
+  final VoidCallback? onLongPress;
+
   const GlassRow({
     super.key,
     required this.icon,
@@ -325,6 +328,7 @@ class GlassRow extends StatelessWidget {
     this.titleMaxLines = 1,
     this.subtitleMaxLines = 1,
     this.trailingCaptionPill = false,
+    this.onLongPress,
   });
 
   @override
@@ -442,7 +446,11 @@ class GlassRow extends StatelessWidget {
       ),
     );
     if (onTap == null) return row;
-    return PressableRow(onTap: onTap!, child: row);
+    return PressableRow(
+      onTap: onTap!,
+      onLongPress: onLongPress,
+      child: row,
+    );
   }
 }
 
@@ -459,7 +467,16 @@ class PressableRow extends StatefulWidget {
   final Widget child;
   final VoidCallback onTap;
 
-  const PressableRow({super.key, required this.onTap, required this.child});
+  /// Press and hold — used for "explain this row". Optional, because most rows
+  /// have nothing more to say than they already do.
+  final VoidCallback? onLongPress;
+
+  const PressableRow({
+    super.key,
+    required this.onTap,
+    required this.child,
+    this.onLongPress,
+  });
 
   @override
   State<PressableRow> createState() => _PressableRowState();
@@ -477,12 +494,17 @@ class _PressableRowState extends State<PressableRow> {
     return MergeSemantics(
       child: Semantics(
         button: true,
+        onLongPressHint: widget.onLongPress == null ? null : 'explain',
         child: GestureDetector(
           behavior: HitTestBehavior.opaque,
           onTapDown: (_) => _set(true),
           onTapUp: (_) => _set(false),
           onTapCancel: () => _set(false),
           onTap: widget.onTap,
+          onLongPress: widget.onLongPress,
+          // The dim has to lift when the long-press fires, or the row stays
+          // faded behind the sheet it opened.
+          onLongPressEnd: (_) => _set(false),
           child: AnimatedOpacity(
             // Down fast (the acknowledgement), up gently (the release).
             opacity: _pressed ? 0.5 : 1,
