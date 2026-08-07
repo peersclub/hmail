@@ -89,8 +89,28 @@ final _accountPrefixed = RegExp(r'^a(\d+):(.+)$');
 /// callers that have refetched a message pass its `threadId`; the ones working
 /// only from a stored insight pass what they have, because a probably-right
 /// URL beats no action at all.
-Uri gmailWebUrl({required int account, required String id}) =>
-    Uri.parse('https://mail.google.com/mail/u/$account/#all/$id');
+///
+/// [accountEmail] is how a multi-account user lands in the right mailbox, and
+/// it should be supplied wherever it is known. The [account] fallback is a
+/// *positional* index into NoMail's own OAuth list, while Gmail's `/u/<N>/`
+/// slot is the browser's own sign-in order — the two coincide only by luck, so
+/// with several accounts connected the index form opens the wrong inbox.
+///
+/// The two selector forms were checked against Gmail rather than assumed
+/// (2026-08-07): `/mail/u/<email>/` returns **404**, exactly like a bogus path,
+/// so it is not a real form however often it is suggested. `?authuser=<email>`
+/// is real — Gmail answers 301 and rewrites it to
+/// `/mail/u/0/?authuser=<email>`, keeping the address. Browsers re-apply the
+/// fragment across a redirect, so the conversation id survives that hop.
+Uri gmailWebUrl({
+  required int account,
+  required String id,
+  String? accountEmail,
+}) =>
+    Uri.parse(accountEmail != null && accountEmail.isNotEmpty
+        ? 'https://mail.google.com/mail/'
+            '?authuser=${Uri.encodeComponent(accountEmail)}#all/$id'
+        : 'https://mail.google.com/mail/u/$account/#all/$id');
 
 InsightAction openEmailAction(String sourceEmailId) {
   final parts = splitSourceEmailId(sourceEmailId);

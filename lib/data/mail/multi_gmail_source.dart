@@ -115,6 +115,24 @@ class MultiGmailSource implements MailSource {
     // pattern's `\d+` cannot match a sign, so anything shaped like `a-1:` is
     // simply not a prefix and was already treated as account 0 above.
     if (index >= apis.length) return null;
-    return GmailSource(apis[index], settings: settings).fetchMessageBody(id);
+
+    final body =
+        await GmailSource(apis[index], settings: settings).fetchMessageBody(id);
+    if (body == null) return null;
+
+    // Stamp the address here, where the index still means something. Past this
+    // point only the body travels, and a link built from a position would open
+    // whichever mailbox Gmail happens to have in that slot.
+    return index < accountEmails.length
+        ? MessageBody(
+            from: body.from,
+            subject: body.subject,
+            date: body.date,
+            html: body.html,
+            isRichText: body.isRichText,
+            threadId: body.threadId,
+            accountEmail: accountEmails[index],
+          )
+        : body;
   }
 }

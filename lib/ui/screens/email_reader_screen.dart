@@ -155,11 +155,50 @@ class _EmailReaderScreenState extends State<EmailReaderScreen> {
     final account = splitSourceEmailId(widget.sourceEmailId).account;
     await _openOutside(InsightAction(
       label: 'Open email',
-      uri: gmailWebUrl(account: account, id: threadId),
+      uri: gmailWebUrl(
+        account: account,
+        id: threadId,
+        // Names the mailbox by address rather than by slot, which is what
+        // makes this land correctly with several accounts connected.
+        accountEmail: _body?.accountEmail,
+      ),
       sourceEmailId: widget.sourceEmailId,
       kind: ActionKind.openEmail,
     ));
   }
+
+  /// THE GMAIL iOS APP CANNOT BE SENT TO A MESSAGE. Settled on a device
+  /// 2026-08-06/07 after nine URL forms; recorded here so nobody re-derives it.
+  ///
+  /// Both mechanisms iOS offers are closed, and neither by our mistake:
+  ///
+  /// *Universal links* — `mail.google.com` publishes an
+  /// `apple-app-site-association` with 48 `applinks.details` entries and not
+  /// one names Gmail. `com.google.Gmail` does appear in that file, but only
+  /// under `webcredentials`, which shares saved passwords and routes nothing.
+  /// Google has never claimed its own webmail host for its own mail app.
+  ///
+  /// *Custom scheme* — `googlegmail://` is registered and does honour paths,
+  /// proven by `googlegmail:///co?to=…` opening a real draft. But compose is
+  /// apparently the only action it honours. These all failed, each on a real
+  /// device: `cv=<messageId>`, `cv=<threadId>`, `cv=<threadId>/accountId=<N>`,
+  /// `cv=<threadId>/accountId=<email>`, `cv/<threadId>`, `?view=cv&th=`,
+  /// `cv?th=`, `search?q=<threadId>`, `search?q=rfc822msgid:<header>`.
+  /// The last four use Gmail's own web parameter names, so this is not a
+  /// naming near-miss.
+  ///
+  /// The `cv=` form every blog repeats traces to two posts (2013, 2018) that
+  /// share one example id, and a curated 2021 scheme reference lists Gmail as
+  /// bare `googlegmail://` with no paths. It was either never real or was
+  /// removed long ago.
+  ///
+  /// Android is unaffected: `mail.google.com` serves an `assetlinks.json`
+  /// delegating `handle_all_urls` to `com.google.android.gm`, so the https URL
+  /// reaches Gmail there. The asymmetry is Google's choice, not a gap here.
+  ///
+  /// Hence the reader: rendering the message is the only route that actually
+  /// lands on the right email on iOS.
+  Future<void> _openOutsideAction() => _openOnTheWeb();
 
   Future<void> _toggleImages() async {
     setState(() => _showImages = !_showImages);
@@ -207,9 +246,9 @@ class _EmailReaderScreenState extends State<EmailReaderScreen> {
               CupertinoButton(
                 padding: EdgeInsets.zero,
                 minimumSize: const Size(44, 44),
-                onPressed: _openOnTheWeb,
+                onPressed: _openOutsideAction,
                 child: Semantics(
-                  label: 'Open this message in Gmail on the web',
+                  label: 'Open this conversation in Gmail on the web',
                   child: Icon(
                     CupertinoIcons.arrow_up_right_square,
                     size: 21,

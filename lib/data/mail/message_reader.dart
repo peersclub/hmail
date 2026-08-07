@@ -39,6 +39,15 @@ class MessageBody {
   /// button is the one link in the app that can be right on a reply chain.
   final String threadId;
 
+  /// Which mailbox this came out of, when the caller knew.
+  ///
+  /// The `a<N>:` prefix on an insight is a position in NoMail's OAuth list,
+  /// and Gmail's own `/u/<N>/` slot is the browser's sign-in order — unrelated
+  /// orderings, so with several accounts connected a positional link opens
+  /// somebody else's inbox. The address is the only identifier both sides
+  /// agree on, and a refetch is where it is known.
+  final String accountEmail;
+
   /// The message's own `text/html`, or its `text/plain` escaped and wrapped —
   /// either way, a fragment to place inside a document, never a whole one.
   final String html;
@@ -54,6 +63,7 @@ class MessageBody {
     required this.html,
     required this.isRichText,
     this.threadId = '',
+    this.accountEmail = '',
   });
 }
 

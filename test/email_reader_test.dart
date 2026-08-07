@@ -303,6 +303,46 @@ void main() {
           'https://mail.google.com/mail/u/2/#all/thread1');
     });
 
+    test('an address selects the mailbox instead of a positional slot', () {
+      // Checked against Gmail on 2026-08-07: `?authuser=<email>` answers 301
+      // and rewrites to `/mail/u/0/?authuser=<email>`, keeping the address,
+      // while `/mail/u/<email>/` answers 404 exactly like a bogus path. The
+      // index form is a position in NoMail's OAuth list and Gmail's `/u/<N>/`
+      // is the browser's sign-in order — unrelated, so with several accounts
+      // connected it opens the wrong inbox.
+      expect(
+        gmailWebUrl(account: 2, id: 'thread1', accountEmail: 'a+b@x.com')
+            .toString(),
+        'https://mail.google.com/mail/?authuser=a%2Bb%40x.com#all/thread1',
+        reason: 'the address is percent-encoded into the query, and the '
+            'conversation stays in the fragment',
+      );
+    });
+
+    test('an empty address falls back to the slot rather than breaking', () {
+      for (final email in [null, '']) {
+        expect(gmailWebUrl(account: 1, id: 't', accountEmail: email).toString(),
+            'https://mail.google.com/mail/u/1/#all/t');
+      }
+    });
+
+    test('the account address rides along with a refetched body', () async {
+      final source = MultiGmailSource(
+        [_api('acct0'), _api('acct1')],
+        accountEmails: const ['first@x.com', 'second@y.com'],
+      );
+      expect((await source.fetchMessageBody('a1:m9'))?.accountEmail,
+          'second@y.com');
+    });
+
+    test('no known address degrades to empty, not a wrong one', () async {
+      // accountEmails is optional, and guessing here would be worse than the
+      // positional fallback: a wrong address opens a real mailbox that is not
+      // the user's.
+      final source = MultiGmailSource([_api('acct0')]);
+      expect((await source.fetchMessageBody('a0:m9'))?.accountEmail, isEmpty);
+    });
+
     test('splitSourceEmailId recovers the account for the URL', () {
       expect(splitSourceEmailId('a3:msg9'), (account: 3, id: 'msg9'));
       expect(splitSourceEmailId('demo-netflix'),
