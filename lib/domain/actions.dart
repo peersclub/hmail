@@ -71,17 +71,36 @@ class InsightAction {
 /// inbox, not whichever account happens to be Gmail's default.
 final _accountPrefixed = RegExp(r'^a(\d+):(.+)$');
 
-InsightAction openEmailAction(String sourceEmailId) {
-  var account = 0;
-  var id = sourceEmailId;
+/// Splits `a<N>:<gmailId>` into its parts, defaulting to account 0 for the
+/// unprefixed ids demo fixtures and older snapshots carry.
+({int account, String id}) splitSourceEmailId(String sourceEmailId) {
   final m = _accountPrefixed.firstMatch(sourceEmailId);
-  if (m != null) {
-    account = int.parse(m.group(1)!);
-    id = m.group(2)!;
-  }
+  return m == null
+      ? (account: 0, id: sourceEmailId)
+      : (account: int.parse(m.group(1)!), id: m.group(2)!);
+}
+
+/// Gmail's web URL for one conversation.
+///
+/// [id] must be a **thread** id wherever one is known. The fragment addresses
+/// a conversation, not a message: for a single-message thread the two ids are
+/// equal, which is why passing a message id looks fine on most transactional
+/// mail — but on a reply chain they differ and Gmail cannot resolve it. The
+/// callers that have refetched a message pass its `threadId`; the ones working
+/// only from a stored insight pass what they have, because a probably-right
+/// URL beats no action at all.
+Uri gmailWebUrl({required int account, required String id}) =>
+    Uri.parse('https://mail.google.com/mail/u/$account/#all/$id');
+
+InsightAction openEmailAction(String sourceEmailId) {
+  final parts = splitSourceEmailId(sourceEmailId);
   return InsightAction(
     label: 'Open email',
-    uri: Uri.parse('https://mail.google.com/mail/u/$account/#all/$id'),
+    // A stored insight only knows the message id — the thread id was never
+    // captured at extraction time and is not worth a network call to learn,
+    // because this URL is the fallback for when the reader cannot run. The
+    // reader itself builds a thread-accurate URL from what it refetched.
+    uri: gmailWebUrl(account: parts.account, id: parts.id),
     sourceEmailId: sourceEmailId,
     kind: ActionKind.openEmail,
   );

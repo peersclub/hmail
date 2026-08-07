@@ -141,8 +141,24 @@ class _EmailReaderScreenState extends State<EmailReaderScreen> {
   /// the scheme URL that looked like one made Gmail show its own "unable to
   /// understand link" error. Safari may ask the user to sign in — annoying,
   /// but it is a page they can act on, which is the point of this button.
+  ///
+  /// This is the one link in the app built from a *thread* id, which is what
+  /// Gmail's fragment actually addresses. Everywhere else only the message id
+  /// was ever stored, and the two are equal only while a thread holds one
+  /// message — so on a reply chain this button lands and the others don't.
   Future<void> _openOnTheWeb() async {
-    await _openOutside(openEmailAction(widget.sourceEmailId));
+    final threadId = _body?.threadId ?? '';
+    if (threadId.isEmpty) {
+      await _openOutside(openEmailAction(widget.sourceEmailId));
+      return;
+    }
+    final account = splitSourceEmailId(widget.sourceEmailId).account;
+    await _openOutside(InsightAction(
+      label: 'Open email',
+      uri: gmailWebUrl(account: account, id: threadId),
+      sourceEmailId: widget.sourceEmailId,
+      kind: ActionKind.openEmail,
+    ));
   }
 
   Future<void> _toggleImages() async {

@@ -247,6 +247,78 @@ void main() {
     });
   });
 
+  group('the web URL addresses a conversation, not a message', () {
+    // Gmail's `#all/<id>` fragment takes a *thread* id. For a single-message
+    // thread the two ids are equal, which is why passing a message id looks
+    // correct on almost all transactional mail — and why a reply chain, where
+    // they differ, silently failed to open. A refetch is the only place the
+    // thread id is known, so the reader is the only link that can be right.
+    GmailApi threadedApi({required String id, required String threadId}) =>
+        GmailApi(MockClient((request) async => http.Response(
+              jsonEncode({
+                'id': id,
+                'threadId': threadId,
+                'internalDate': '1754006400000',
+                'payload': {
+                  'mimeType': 'text/html',
+                  'headers': const [],
+                  'body': {
+                    'data': base64Url.encode(utf8.encode('<p>body</p>')),
+                  },
+                },
+              }),
+              200,
+              headers: {'content-type': 'application/json'},
+            )));
+
+    test('a refetched body carries its thread id', () async {
+      final body = await MultiGmailSource([
+        threadedApi(id: 'msg9', threadId: 'thread1'),
+      ]).fetchMessageBody('a0:msg9');
+      expect(body!.threadId, 'thread1');
+    });
+
+    test('a message with no thread id degrades to empty, not a crash',
+        () async {
+      final api = GmailApi(MockClient((request) async => http.Response(
+            jsonEncode({
+              'id': 'msg9',
+              'internalDate': '1754006400000',
+              'payload': {
+                'mimeType': 'text/plain',
+                'headers': const [],
+                'body': {'data': base64Url.encode(utf8.encode('hi'))},
+              },
+            }),
+            200,
+            headers: {'content-type': 'application/json'},
+          )));
+      final body = await MultiGmailSource([api]).fetchMessageBody('m1');
+      expect(body!.threadId, isEmpty,
+          reason: 'the reader falls back to the message-id URL from here');
+    });
+
+    test('gmailWebUrl names the account slot and the id it was given', () {
+      expect(gmailWebUrl(account: 2, id: 'thread1').toString(),
+          'https://mail.google.com/mail/u/2/#all/thread1');
+    });
+
+    test('splitSourceEmailId recovers the account for the URL', () {
+      expect(splitSourceEmailId('a3:msg9'), (account: 3, id: 'msg9'));
+      expect(splitSourceEmailId('demo-netflix'),
+          (account: 0, id: 'demo-netflix'),
+          reason: 'unprefixed ids are account 0, not an error');
+    });
+
+    test('a stored insight still yields the message-id URL', () {
+      // Unchanged on purpose: extraction never captured a thread id, and it is
+      // not worth a network call for a link that only runs when the reader
+      // cannot. This pins that the fallback did not regress.
+      expect(openEmailAction('a1:msg9').uri.toString(),
+          'https://mail.google.com/mail/u/1/#all/msg9');
+    });
+  });
+
   group('escapeHtml', () {
     test('ampersand is escaped first so escapes are not re-escaped', () {
       expect(escapeHtml('a & b < c'), 'a &amp; b &lt; c');

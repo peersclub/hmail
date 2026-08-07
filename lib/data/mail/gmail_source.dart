@@ -383,6 +383,9 @@ class GmailSource implements MailSource {
       date: date,
       html: html,
       isRichText: isRichText,
+      // Free here and unobtainable later: the response we already have names
+      // the conversation, and that is what a Gmail web URL actually addresses.
+      threadId: message.threadId ?? '',
     );
   }
 

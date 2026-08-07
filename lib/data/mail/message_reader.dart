@@ -29,6 +29,16 @@ class MessageBody {
   final String subject;
   final DateTime date;
 
+  /// The conversation this message belongs to.
+  ///
+  /// Worth carrying because Gmail's web URL addresses a *conversation*: the
+  /// fragment after `#all/` is a thread id, and passing a message id only
+  /// works when the thread holds one message. Most transactional mail does,
+  /// which is exactly why the difference stayed invisible. A refetch is the
+  /// one place this is known for free, so the reader's "open on the web"
+  /// button is the one link in the app that can be right on a reply chain.
+  final String threadId;
+
   /// The message's own `text/html`, or its `text/plain` escaped and wrapped —
   /// either way, a fragment to place inside a document, never a whole one.
   final String html;
@@ -43,6 +53,7 @@ class MessageBody {
     required this.date,
     required this.html,
     required this.isRichText,
+    this.threadId = '',
   });
 }
 
