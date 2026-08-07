@@ -20,6 +20,9 @@ resolves it.
 ## Map
 
 **Product**
+- [[PRD]] — the flow-level spec: user jobs, every core flow as a diagram,
+  screen states, trust surfaces, and the open decisions that need a product
+  call rather than a technical one
 - [[One App Vision]] — the north star: 14 life domains, iOS surfaces, the
   agent layer, competitive position, phased roadmap
 - [[Requirements]] — what the product must do
